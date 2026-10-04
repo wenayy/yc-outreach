@@ -33,6 +33,11 @@ Your details, template, "sent" marks and loaded batches are stored in your brows
 
 ## Two-template rotation
 
+**Allow catch-all recipients to send after verified mailboxes** is an explicit opt-in in step 5. It accepts recent
+catch-all evidence while keeping invalid, risky, disposable, unknown, suppressed and stale addresses out of sending.
+Verified recipients are sent before catch-all recipients. The setting persists across restarts and can be switched off
+to return remaining catch-all drafts to hold. Catch-all mailboxes are not labeled verified and may still bounce.
+
 Write Template A, enable **Alternate templates A and B for each sender**, and write Template B's subject and body.
 Both use the same personalization fields. Review saves both personalized drafts for each recipient; you can edit
 either before queueing. The worker selects A, B, A, B separately for each actual sending address across attempts.
@@ -111,7 +116,7 @@ maintenance in the Apify Store and its runs can stall or return no results.
 2. Run `python3 serve.py`, load companies and finish your email template.
 3. Optionally use **Find more company contacts** when founder addresses are missing or invalid. Click **Review loaded companies** to preselect up to three distinct contacts per company. Each gets a separate draft with the correct greeting. Invalid and blocked addresses are excluded; earlier sent and queued contacts count toward the three-contact limit. The compact cards show the recipient and planned sender. Uncheck individual drafts or turn off **include suggested addresses** to exclude guesses.
 4. Click **Queue selected**. Duplicate recipients are skipped across all mailboxes. Unverified drafts are saved as `held`, including older pending messages after upgrading. Click **Verify mailboxes** with your Apify token to release only addresses with acceptable evidence. Editing the recipient requires verification of the new address as well.
-5. Select the ready sender accounts, set the batch interval (default two minutes, adjustable to 60 minutes), then click **Start sending**. Verified/checked-source messages go first, then public/manual sources, then guesses that subsequently passed mailbox verification. Each batch uses one priority tier. The daily total defaults to 20 and can be up to 50 per selected mailbox.
+5. Select the ready sender accounts, set the batch interval (default two minutes, adjustable to 60 minutes), then click **Start sending**. Verified/checked-source messages go first, then public/manual sources, then guesses that subsequently passed mailbox verification. Each batch uses one priority tier. The daily total can be up to 200 across selected mailboxes, even with one sender. Up to 1,000 drafts can be queued per request; the queue can span multiple days. Apify's 50-address chunks are processing batches, not a daily verification cap. Provider sending limits still apply.
 
 Additional Gmail accounts use `SMTP_2_USER` / `SMTP_2_PASSWORD` and `SMTP_3_USER` / `SMTP_3_PASSWORD` in `.env`. Each needs its own Google app password. Additional accounts default to Gmail SMTP; optional `SMTP_2_HOST`, `SMTP_2_PORT`, `SMTP_2_SECURITY`, `SMTP_2_FROM`, and `SMTP_2_FROM_NAME` (and corresponding `SMTP_3_` keys) support other SMTP settings. The UI shows account readiness without exposing passwords. Each selected account sends one different queued message in a shared two-minute batch by default. With three ready accounts, a worker pass sends up to three distinct messages, one through each account, then waits two minutes before the next batch. If an account sent recently, the batch waits until every participating account reaches its interval. The queue records the planned sender before sending and the actual sender after acceptance. Duplicate-recipient protection and blocking apply across all accounts. A sending error pauses the whole queue; another account does not retry that recipient.
 

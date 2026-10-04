@@ -93,12 +93,14 @@ footer{color:var(--muted);font-size:13px;margin-top:32px}
 
 <section class="panel">
   <h2>5. Review and auto-send</h2>
+  <label class="chk"><input id="allowCatchAll" type="checkbox">Allow catch-all recipients to send after verified mailboxes</label>
+  <p class="ph">Catch-all results do not confirm the individual mailbox and can bounce. Invalid, risky, disposable and unknown results remain held or blocked.</p>
   <p class="ph">Each selected account sends one different email in a shared batch every two minutes: up to three messages, then a two-minute pause. If a mailbox sent recently, the next batch waits until it is ready. Review opens compact routes so you can see the recipient and planned sender without scrolling through every draft.</p>
   <p class="ph">Messages are marked sent automatically only after the sending mailbox accepts them. The same recipient cannot be queued twice. Inbox placement cannot be guaranteed; personal, relevant messages and accurate addresses help, while guessed addresses may bounce.</p>
   <div id="senderAccounts" class="grid" style="margin-top:12px"></div>
   <div class="row2" style="margin-top:12px">
     <button id="reviewMail" type="button" disabled>Review loaded companies</button>
-    <label class="f">Daily limit (rolling 24 hours)<input id="dailyLimit" type="number" value="20" min="1" max="150"></label>
+    <label class="f">Daily total across senders (rolling 24 hours)<input id="dailyLimit" type="number" value="200" min="1" max="200"></label>
     <label class="f">Minutes between batches<input id="sendInterval" type="number" value="2" min="1" max="60"></label>
     <button id="startMail" class="primary" type="button" disabled>Start sending</button>
     <button id="pauseMail" type="button" disabled>Pause</button>
@@ -413,8 +415,9 @@ function mailboxVerdict(item) {
   const status = String(item.status || "unknown").toLowerCase();
   const noRisk = ["", "none"].includes(String(item.risk_type || "").trim().toLowerCase());
   if (status === "valid" && item.smtp_valid === true && item.is_catch_all === false && item.is_disposable === false && item.syntax_valid === true && item.domain_exists === true && item.mx_found === true && noRisk && !item.error) return "deliverable";
+  if (item.is_disposable === true || status === "disposable") return "risky";
   if (item.is_catch_all === true || ["catch-all","catch_all"].includes(status)) return "catch-all";
-  if (item.is_disposable === true || ["risky","disposable"].includes(status)) return "risky";
+  if (status === "risky") return "risky";
   if (status === "invalid") return "invalid";
   return "unknown";
 }
@@ -561,10 +564,11 @@ async function refreshMail() {
       $("sendInterval").value = mailState.interval_minutes;
     }
     const accounts = mailState.accounts || [];
+    $("allowCatchAll").checked = !!mailState.allow_catch_all;
     const signature = JSON.stringify(accounts.map(a => [a.id, a.email, a.configured]));
     if (signature !== senderSignature) {
       senderSignature = signature;
-      $("senderAccounts").innerHTML = accounts.map(a => `<label class="f"><span class="chk"><input type="checkbox" class="sender-choice" value="${esc(a.id)}" ${mailState.selected_senders.includes(a.id) && a.configured ? "checked" : ""} ${a.configured ? "" : "disabled"}>${esc(a.email || "Primary mailbox")}</span><span>${a.configured ? "Ready · up to 50/day" : "App password needed in .env"}</span></label>`).join("");
+      $("senderAccounts").innerHTML = accounts.map(a => `<label class="f"><span class="chk"><input type="checkbox" class="sender-choice" value="${esc(a.id)}" ${mailState.selected_senders.includes(a.id) && a.configured ? "checked" : ""} ${a.configured ? "" : "disabled"}>${esc(a.email || "Primary mailbox")}</span><span>${a.configured ? "Ready · shares the 200/day total" : "App password needed in .env"}</span></label>`).join("");
     }
     const pending = mailState.messages.filter(m => m.status === "pending").length;
     const completed = mailState.messages.filter(m => ["sent","bounced"].includes(m.status));
@@ -608,7 +612,10 @@ function renderHistory() {
   $("mailHistory").innerHTML = rows.length ? `<table><thead><tr><th>Company</th><th>Recipient</th><th>Sender</th><th>Status</th></tr></thead><tbody>${rows.slice(historyPage*20,historyPage*20+20).map(m => {
     const check = CHECKS[m.recipient];
     const label = `${labels[m.source] || "Unknown source"}${check ? ` · mailbox: ${check.verdict}` : " · no mailbox evidence"}`;
-    return `<tr><td>${esc(m.company)}</td><td><span class="quality-dot ${esc(m.source || "none")}" title="${esc(label)}" role="img" aria-label="${esc(label)}"></span>${esc(m.recipient)}</td><td>${esc(m.sender || m.planned_sender || "Assigned at start")}</td><td>${esc(m.status === "held" ? "Needs verification" : m.status)}${m.template ? ` · Template ${esc(m.template)}` : ""}${m.error ? `<br><span class="ph">${esc(m.error)}</span>` : ""}</td></tr>`;
+    const hold = {"catch-all":["Held · catch-all", "Domain accepts arbitrary addresses; this mailbox is not confirmed."], risky:["Held · risky", "Verifier flagged this address as risky."], unknown:["Held · inconclusive", "Verification could not confirm this mailbox."]}[check?.verdict];
+    const status = m.status === "held" ? (hold?.[0] || "Needs verification") : m.status === "pending" && check?.verdict === "catch-all" ? "Ready · catch-all allowed" : m.status;
+    const explanation = m.status === "held" && hold ? hold[1] : m.error;
+    return `<tr><td>${esc(m.company)}</td><td><span class="quality-dot ${esc(m.source || "none")}" title="${esc(label)}" role="img" aria-label="${esc(label)}"></span>${esc(m.recipient)}</td><td>${esc(m.sender || m.planned_sender || "Assigned at start")}</td><td>${esc(status)}${m.template ? ` · Template ${esc(m.template)}` : ""}${explanation ? `<br><span class="ph">${esc(explanation)}</span>` : ""}</td></tr>`;
   }).join("")}</tbody></table><div class="acts" style="margin:10px"><button type="button" data-history-page="-1" ${historyPage ? "" : "disabled"}>Previous</button><span class="ph">${historyPage*20+1}–${Math.min(rows.length,historyPage*20+20)} of ${rows.length}</span><button type="button" data-history-page="1" ${historyPage*20+20 >= rows.length ? "disabled" : ""}>Next</button></div>` : '<p class="ph">No messages in this view.</p>';
 }
 $("historyTabs").onclick = e => { const tab = e.target.closest("[data-tab]"); if (tab) {historyTab = tab.dataset.tab; historyPage = 0; renderHistory();} };
@@ -689,19 +696,23 @@ function updateMailControls() {
   const pending = mailState.messages.filter(m => m.status === "pending").length;
   const held = mailState.messages.filter(m => m.status === "held").length;
   const accounts = [...document.querySelectorAll(".sender-choice:checked")].length;
-  $("dailyLimit").max = Math.max(50, accounts * 50);
+  $("dailyLimit").max = 200;
   const validSettings = $("dailyLimit").checkValidity() && $("sendInterval").checkValidity();
   const ready = mailState.configured && mailState.paused && pending && accounts && validSettings;
   $("startMail").disabled = mailBusy || !ready;
-  $("startMail").title = !pending ? "Add reviewed messages to the queue first" : !accounts ? "Select a ready sender account" : "Start sending queued messages";
+  $("startMail").title = !pending ? "No mailbox-verified messages are ready to send" : !accounts ? "Select a ready sender account" : "Start sending queued messages";
   let message;
   if (!pending) {
     message = held ? `${held} queued draft${held === 1 ? "" : "s"} need mailbox verification. Paste your Apify token above and click “Verify mailboxes”.`
       : !$("mailReview").hidden
       ? selected.length ? `${selected.length} message${selected.length === 1 ? "" : "s"} selected. Queue the drafts, verify their mailboxes, then start sending.` : "Select a recipient or add an address in an expanded card."
       : "No emails queued yet. Click “Review loaded companies”, select messages, and add them to the queue.";
+    if (held) {
+      const inconclusive = mailState.messages.filter(m => m.status === "held" && ["catch-all","risky","unknown"].includes(CHECKS[m.recipient]?.verdict)).length;
+      if (inconclusive) message = `${held} drafts held: ${inconclusive} have catch-all, risky or inconclusive results${held > inconclusive ? `; ${held-inconclusive} need fresh mailbox verification` : ""}. Only positively verified mailboxes can send. Find another company contact for unverifiable addresses.`;
+    }
   } else if (!accounts) message = "Select at least one ready sender account to start sending.";
-  else if (!validSettings) message = `Set a daily total from 1 to ${accounts * 50} for ${accounts} selected account${accounts === 1 ? "" : "s"}, and an interval from 1 to 60 minutes.`;
+  else if (!validSettings) message = "Set a daily total from 1 to 200 across selected accounts, and an interval from 1 to 60 minutes.";
   else message = mailState.paused ? `${pending} email${pending === 1 ? "" : "s"} queued. Click “Start sending” to begin.` : "Sending is active. You can close the browser while your Mac stays awake.";
   say("mailNextStep", message, !!pending && !validSettings);
 }
@@ -769,6 +780,7 @@ $("queueMail").onclick = () => {
 };
 $("startMail").onclick = () => changeMail({ action: "start", daily_limit: Number($("dailyLimit").value), interval_minutes: Number($("sendInterval").value), senders: [...document.querySelectorAll(".sender-choice:checked")].map(el => el.value) });
 $("pauseMail").onclick = () => changeMail({ action: "pause" });
+$("allowCatchAll").onchange = e => changeMail({action:"allow_catch_all",enabled:e.target.checked});
 $("cancelMail").onclick = () => changeMail({ action: "cancel" });
 $("blockMail").onclick = () => changeMail({ action: "suppress", email: $("blockEmail").value });
 $("bounceMail").onclick = () => changeMail({ action:"bounce", email:$("blockEmail").value });

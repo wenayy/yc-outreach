@@ -10,6 +10,7 @@ Optional verified lookup (Apify) runs in the browser, so visitors' tokens never 
 """
 import concurrent.futures as cf, html, json, re, socket, ssl, unicodedata, urllib.parse, urllib.request
 from http.server import BaseHTTPRequestHandler
+from pathlib import Path
 from contact_emails import extract_emails, founder_emails
 
 UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128 Safari/537.36"
@@ -19,6 +20,7 @@ MAX_SLUGS = 10
 CTX = ssl.create_default_context()
 SEASON = {"Winter": 1, "Spring": 2, "Summer": 3, "Fall": 4}
 _algolia = None  # (app, key), cached per warm instance
+CATALOG_PATH = Path(__file__).resolve().parents[1] / 'data' / 'yc_companies.json'
 _pool = cf.ThreadPoolExecutor(32)  # site checks; outlives a request so a slow site can be abandoned
 SITE_DEADLINE = 4  # seconds per company before giving up on its website
 
@@ -71,7 +73,9 @@ def companies(batch):
             break
     return [{"name": h["name"], "slug": h["slug"], "batch": h.get("batch"), "website": h.get("website") or "",
              "one_liner": h.get("one_liner") or "", "industry": h.get("subindustry") or "", "team_size": h.get("team_size"),
-             "launched_at": h.get("launched_at") or 0} for h in hits]
+             "launched_at": h.get("launched_at") or 0, "status": h.get("status") or "",
+             "location": h.get("all_locations") or "", "tags": h.get("tags") or [],
+             "is_hiring": bool(h.get("isHiring")), "linkedin": h.get("linkedin_url") or ""} for h in hits]
 
 
 def domain_of(website):
@@ -131,12 +135,19 @@ def founders(slug):
                     "emails_found": [e for e in founder_emails(name, emails, [person.get("full_name") or "" for person in c.get("founders", [])])],
                     "email_guesses": guesses(name, domain) if dns else []})
     return {"slug": slug, "website": website, "domain": domain, "linkedin": c.get("linkedin_url") or "",
-            "twitter": c.get("twitter_url") or "", "site_emails": emails, "founders": out}
+            "twitter": c.get("twitter_url") or "", "site_emails": emails, "founders": out,
+            "description": c.get("long_description") or c.get("description") or "",
+            "founded": c.get("year_founded") or ""}
 
 
 def route(query):
     q = urllib.parse.parse_qs(query)
     action = (q.get("action") or [""])[0]
+    if action == "catalog":
+        catalog = CATALOG_PATH
+        if not catalog.exists():
+            return 404, {"error": "Saved company dataset is unavailable."}, 0
+        return 200, json.loads(catalog.read_text()), 0
     if action == "batches":
         return 200, batches(), 86400
     if action == "companies":

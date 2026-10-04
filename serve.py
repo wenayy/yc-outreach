@@ -8,6 +8,7 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 from outreach import MailQueue, load_env
+from catalog_jobs import CatalogJobs
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE / 'api'))
@@ -16,6 +17,7 @@ import yc
 
 class Handler(SimpleHTTPRequestHandler):
     queue = None
+    catalog = None
 
     def end_headers(self):
         if urllib.parse.urlparse(self.path).path in ('/', '/index.html'):
@@ -45,10 +47,12 @@ class Handler(SimpleHTTPRequestHandler):
             return self.json_response(403, {'error': 'Local requests only.'})
         if path == '/api/mail':
             return self.json_response(200, self.queue.status())
+        if path == '/api/catalog':
+            return self.json_response(200, self.catalog.status()) if self.catalog else self.json_response(503, {'error':'Company refresh service unavailable.'})
         if path == '/api/yc':
             return yc.handler.do_GET(self)
         # Never expose .env, the queue database, or repository files via the static server.
-        if path not in ('/', '/index.html'):
+        if path not in ('/', '/index.html', '/vendor/tabulator/tabulator.min.js', '/vendor/tabulator/tabulator.min.css'):
             return self.send_error(404)
         return super().do_GET()
 
@@ -58,7 +62,8 @@ class Handler(SimpleHTTPRequestHandler):
         return super().do_HEAD()
 
     def do_POST(self):
-        if urllib.parse.urlparse(self.path).path != '/api/mail':
+        path = urllib.parse.urlparse(self.path).path
+        if path not in ('/api/mail', '/api/catalog'):
             return self.send_error(404)
         if not self.local_request() or self.headers.get('X-Outreach-Token') != self.queue.token:
             return self.json_response(403, {'error': 'Refresh this page before changing the queue.'})
@@ -71,7 +76,12 @@ class Handler(SimpleHTTPRequestHandler):
             payload = json.loads(self.rfile.read(size))
             if not isinstance(payload, dict):
                 raise ValueError('Expected an object.')
-            result = self.queue.action(payload)
+            if path == '/api/catalog':
+                if payload.get('action') != 'refresh' or not self.catalog:
+                    raise ValueError('Company refresh service unavailable or invalid action.')
+                result = self.catalog.start()
+            else:
+                result = self.queue.action(payload)
             return self.json_response(200, result)
         except (ValueError, TypeError) as error:
             return self.json_response(400, {'error': str(error)})
@@ -84,6 +94,8 @@ if __name__ == '__main__':
     marker = HERE / '.outreach' / 'service-data-path'
     data_dir = Path(os.environ.get('OUTREACH_DATA_DIR') or (marker.read_text().strip() if marker.exists() else str(HERE / '.outreach')))
     Handler.queue = MailQueue(data_dir / 'queue.sqlite3')
+    Handler.catalog = CatalogJobs(data_dir, HERE / 'data' / 'yc_companies.json', yc.batches, yc.companies)
+    yc.CATALOG_PATH = Handler.catalog.path
     Handler.queue.start_worker()
     print(f'http://localhost:{server.server_port} — auto-send queue starts paused')
     try:

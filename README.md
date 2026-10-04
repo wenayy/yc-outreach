@@ -275,3 +275,39 @@ Map the required email column and optional company, contact name, website, title
 Click **Load imported contacts**, use the existing A/B templates, optionally verify mailboxes, then **Review loaded companies** and queue selected drafts. Importing never queues or sends automatically. The existing duplicate, suppression, company contact cap, sending priority and 500/day total still apply. Up to three contacts per company can be reviewed and queued. Contacts are labeled unverified unless existing mailbox evidence applies.
 
 Switching source tabs preserves separate YC and imported lists in browser storage. Uploading a new list replaces only the imported list; saved queue/history is preserved. Files are parsed locally in the browser; queued drafts are stored by the local Python service.
+
+## YC company explorer
+
+Open **Company explorer** to browse company data separately from email composition. Add one or more YC batches to the saved explorer list; companies are deduplicated by YC slug. Search name, description, location and tags; filter industry, company status or hiring. Results are paginated at 25 companies per page. Select individual companies or the entire filtered result.
+
+**Fetch selected profiles & emails** reads YC company profiles for company/founder social links, description and founding year, then uses the existing bounded public website extraction. Missing fields stay blank and failures are shown per company. Published addresses and generated pattern guesses remain separate; neither proves mailbox deliverability. Fetching or exporting does not enqueue messages or start Apify runs.
+
+**Export filtered CSV** downloads the full filtered list, including metadata, websites, YC links, founder profiles, published addresses and guesses. CSV fields are quoted and formula-like values are escaped for spreadsheet use. Social/profile fields remain blank until fetched. The explorer list is saved in IndexedDB browser storage to support the full catalog.
+
+**Use selected for outreach** copies the selection into the existing workflow and loads the first page of missing founder records. Use **Load more** for remaining companies, then find contacts, verify, review and queue. Existing queue/history and sending settings remain unchanged. This implementation extends our existing YC loader; it does not run or copy the external Selenium scraper.
+
+### Local scraper snapshot and new company extraction
+
+**Load saved company dataset** reads `data/yc_companies.json`, seeded from the local `ycombinator-com-companies-scraper/yc_finaldata.xlsx` and its ordered `y_combinator.xlsx` profile links. The 744 original records retain founder names and company/founder social links. Snapshot details are marked stale until you fetch their current profiles; missing batch or email fields are not fabricated.
+
+The saved catalog has been refreshed against all available public YC batches. **Refresh YC now** starts a background job on the local Python server, merging directory metadata and newly discovered slugs into a persistent catalog and saving progress after each batch. It does not send emails, crawl every company website or run paid Apify tools. Existing saved profile/social fields remain available; older companies absent from a refresh are retained.
+
+To rebuild the local snapshot, run `python3 scripts/import_yc_snapshot.py` (this resets the JSON catalog to its original 744 records). To update the packaged seed dataset, run `python3 scripts/refresh_yc_catalog.py`, then `python3 background_service.py restart` to stage it. An existing persistent catalog is refreshed using **Refresh YC now**, rather than overwritten by the seed. Restart pauses sending. The service package includes the JSON dataset, so no Excel dependencies are needed at runtime.
+
+Select companies and use **Fetch selected profiles & emails** for website extraction. This keeps published addresses separate from pattern guesses. Snapshot companies transferred to outreach have their profiles refreshed rather than treating old founder details as current.
+
+Company Explorer automatically checks every available YC batch on its first opening after a page load/refresh. It first restores the saved browser catalog (or loads the server catalog when empty), merges new directory records by slug, and marks new additions **New this refresh** at the top of results. Revisiting the tab in the same page session does not repeat the scan; **Refresh YC now** runs it again explicitly. Zero new companies is a valid result. This scans company metadata only; profile/email extraction and queueing remain explicit actions.
+
+### Explorer layout and outreach handoff
+
+The explorer uses vendored Tabulator 6.3.1 (MIT license in `vendor/tabulator/LICENSE`) with compact rows, batch/industry/status filters and distinct founder-email, general-inbox, guess and snapshot badges. Long company descriptions and founder contact patterns appear in a separate accessible profile dialog. General inboxes such as `hello@` are not presented as identified founder mailboxes.
+
+The numbered workflow is **Choose companies → Fetch contacts → Prepare outreach**. Preparing outreach opens a handoff panel with available-profile/address counts and links to mailbox verification and draft review. The selection is not automatically queued or sent. Advanced catalog and single-batch loaders live under **Other ways to load company data**.
+
+Company Explorer shows **Already sent · N** when saved queue history includes sent messages for that company (case/whitespace normalized). It also shows **In queue**, **Bounced** and uncertain send outcomes separately. A manually marked company with no server history shows **Marked sent**. These badges update with normal queue polling. A sent badge means a sender accepted at least one message, not that every founder was contacted or inbox delivery was confirmed.
+
+### Background directory jobs
+
+YC directory refreshes run in a background thread on the local Python service. The browser starts or reconnects to a job through authenticated `POST /api/catalog`, then polls `GET /api/catalog` for progress. Company catalog and batch checkpoints are saved alongside the queue in `company_catalog.json` and `catalog_job.json`. Interrupted jobs resume remaining batches after service startup. Repeated starts while a job runs reconnect to that job.
+
+Scanning does not lock source tabs: YC outreach and Import contacts remain usable. Closing the browser does not stop the job; the Mac must remain awake and the server running. On completion, the browser merges the persistent catalog into its explorer cache. Profile/email extraction is still an explicit selected-company action, separate from directory jobs. Failed batches are reported and existing data retained.

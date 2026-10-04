@@ -267,3 +267,5 @@ Write to people one at a time, keep it short, and take "no" for an answer.
 ## License
 
 MIT
+
+Unverified sending is an explicit opt-in in step 5. It releases guesses and inconclusive or unchecked addresses after verified mailboxes and catch-all recipients. Known invalid, risky, disposable, bounced and blocked addresses remain excluded. This can increase bounces. The daily total supports up to 500 across selected senders.

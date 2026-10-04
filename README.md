@@ -88,11 +88,7 @@ runs are never resumed automatically by the new button. The server retains expli
 evidence, but it accepts only either of the two fixed verifier actors, never an arbitrary actor.
 
 **Find more company contacts** calls
-[`pequod-labs/company-decision-maker-finder`](https://apify.com/pequod-labs/company-decision-maker-finder) for up to five
-loaded companies with fewer than three usable contacts. It asks for founder/CEO contacts and alternatives, merges named
-contacts with matching company-domain emails, and keeps their source. New contacts still need a mailbox check and your
-review before queuing. Previously searched companies are skipped for 24 hours. Free Apify plans may allow only five
-domains per day. The budget field caps each run, not the full sequence of runs.
+[`code_crafter/leads-finder`](https://apify.com/code_crafter/leads-finder) for up to 33 loaded company domains, with an explicit `fetch_count: 100` cap. It requests validated work-email leads for founders, CEOs, CTOs, engineering managers and recruiting contacts. Named results must match a requested company and its email domain; duplicates and already contacted or suppressed recipients are excluded. Up to three contacts per company are kept as drafts for review, not proof of mailbox verification. Previously searched companies are skipped for 24 hours. The budget field caps each run; no contacts or results are guaranteed.
 
 Lookups run on your Apify account after a cost confirmation. The UI requests an abort after eight minutes. A saved run
 ID lets you resume/import after a page refresh or connection failure without starting that run again. Provider failures,
@@ -104,7 +100,7 @@ adding them to the queue:
 | Need | Apify option | What it provides |
 |---|---|---|
 | A better candidate for a named YC founder | [`scrapersdelight/work-email-finder-scraper`](https://apify.com/scrapersdelight/work-email-finder-scraper) | Name plus company domain, candidate addresses, confidence, and public-source evidence. It does not perform SMTP mailbox verification. |
-| More relevant people at one company (integrated) | [`pequod-labs/company-decision-maker-finder`](https://apify.com/pequod-labs/company-decision-maker-finder) | Used by **Find more company contacts**. The app independently verifies its candidate mailboxes before sending. |
+| More relevant people at one company (integrated) | [`code_crafter/leads-finder`](https://apify.com/code_crafter/leads-finder) | Used by **Find more company contacts**. The app independently verifies its candidate mailboxes before sending. |
 | A second paid comparison | [`nexgendata/person-business-email-finder`](https://apify.com/nexgendata/person-business-email-finder) | Name plus company-domain lookup. It is substantially more expensive than the named-founder option above, so use it only when you need a comparison. |
 
 Do not use the old `snipercoder/email-finder-by-name-and-domain` actor for new work. It is currently marked as under
@@ -229,7 +225,7 @@ domain doesn't resolve.
   these cross-origin, which is why this part runs on a server.
 - **Mailbox checks:** [`bounceverify/bounceverify-email-verifier`](https://apify.com/bounceverify/bounceverify-email-verifier). Use the sample button before a full check.
   Runs start in the browser; locally the server imports the evidence with a transient token and checks it before sending.
-- **Additional contacts:** [`pequod-labs/company-decision-maker-finder`](https://apify.com/pequod-labs/company-decision-maker-finder),
+- **Additional contacts:** [`code_crafter/leads-finder`](https://apify.com/code_crafter/leads-finder),
   merged with known founders as separate named contacts rather than CC recipients.
 
 ## Command line

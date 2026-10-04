@@ -82,7 +82,7 @@ footer{color:var(--muted);font-size:13px;margin-top:32px}
     <button id="testMailboxes" type="button" disabled>Test up to 10 mailboxes</button>
     <button id="reimportMailChecks" type="button">Refresh saved results</button>
   </div>
-  <p class="ph">New lookups skip already sent companies and recipients. Mailbox verification also checks waiting drafts, excluding completed recipients. Contact discovery: up to 5 companies per run, capped by the budget above. Free Apify accounts may be limited to 5 company domains per day. Newly found contacts are drafts until you review and queue them.</p>
+  <p class="ph">New lookups skip already sent companies and recipients. Mailbox verification also checks waiting drafts, excluding completed recipients. Leads Finder searches up to 33 company domains with a maximum of 100 leads per run, capped by the budget above. We keep up to three contacts per company. Newly found contacts are drafts until you review and queue them.</p>
   <p class="status" id="discoverStatus"></p>
   <p class="ph">Check domains screens address format and mail-domain records with the original validator. “Checked (domain)” does not confirm that the person's mailbox exists; Verify mailboxes is still required for automatic sending.</p>
   <p class="status" id="domainStatus"></p>
@@ -163,7 +163,7 @@ resume: {resume}`
 const KEY = "yc-outreach-v2";
 const ACTOR = "bounceverify~bounceverify-email-verifier";
 const DOMAIN_ACTOR = "vulnv~email-validator";
-const DISCOVERY_ACTOR = "pequod-labs~company-decision-maker-finder";
+const DISCOVERY_ACTOR = "code_crafter~leads-finder";
 const APIFY = "https://api.apify.com/v2";
 const APIFY_TIMEOUT_MS = 8 * 60 * 1000;
 const store = { get(k, d) { try { return JSON.parse(localStorage.getItem(k)) ?? d } catch { return d } },
@@ -506,35 +506,37 @@ async function discoverContacts() {
   if (!token) return say("discoverStatus", "Paste your Apify token first.", true);
   if (!await syncLookupHistory("discoverStatus")) return;
   const excluded = lookupExclusions();
-  const companies = DATA.filter(c => !excluded.companies.has(companyKey(c.name)) && contacts(c).filter(f => best(f).email).length < 3 && (!c.discovery_attempted || Date.now()-c.discovery_attempted > 86400000)).map(c => {
+  const companies = DATA.filter(c => !excluded.companies.has(companyKey(c.name)) && contacts(c).filter(f => best(f).email).length < 3 && (!c.leads_discovery_attempted || Date.now()-c.leads_discovery_attempted > 86400000)).map(c => {
     try { return {c, domain:(c.domain || new URL(c.website).hostname).replace(/^www\./, "").toLowerCase()}; } catch { return null; }
-  }).filter(Boolean).slice(0,5);
+  }).filter(Boolean).slice(0,33);
   const resume = store.get(KEY + "-run-" + DISCOVERY_ACTOR, null);
   if (!companies.length && !resume) return say("discoverStatus", "Loaded companies are already sent, were searched today, or already have three contacts. Load fresh companies or retry tomorrow.");
   if (!confirm(resume ? "Resume the existing contact-discovery run?" : `Find named contacts at ${companies.map(p => p.c.name).join(", ")}? One Apify run capped at $${cap}. Results still need mailbox verification and your review.`)) return;
   busy(true);
   try {
-    const {items, key} = await actorRun(DISCOVERY_ACTOR, {domainList:companies.map(p => p.domain), need:"email", targetPersona:{mode:"preset", preset:"founder_ceo"}, maxContactsPerDomain:3, returnAlternates:true, verifyEmails:true}, token, cap, "discoverStatus");
+    const {items, key} = await actorRun(DISCOVERY_ACTOR, {company_domain:companies.map(p => p.domain), contact_job_title:["Founder", "Co-Founder", "CEO", "CTO", "Head of Engineering", "Engineering Manager", "Recruiter", "Head of Talent"], email_status:["validated"], fetch_count:100, file_name:"YC outreach company contacts"}, token, cap, "discoverStatus");
     let added = 0, matched = 0;
-    for (const item of items) {
-      const domain = String(item.domain || item.company_domain || "").toLowerCase().replace(/^www\./, "");
+    for (const item of items.slice(0,100)) {
+      let domain;
+      try { domain = new URL("https://" + String(item.company_domain || item.company_website || "").replace(/^https?:\/\//, "")).hostname.toLowerCase().replace(/^www\./, ""); } catch { continue; }
+      if (!companies.some(p => p.domain === domain)) continue;
       const c = DATA.find(c => { try { return (c.domain || new URL(c.website).hostname).toLowerCase().replace(/^www\./, "") === domain; } catch { return false; } });
       if (!c || !domain || lookupExclusions().companies.has(companyKey(c.name))) continue;
       matched++;
-      const people = [item.decision_maker, ...(item.decision_makers || []).map(p => p.decision_maker || p), ...(item.alternates || []).map(p => p.decision_maker || p)].filter(Boolean);
+      const people = [item];
       for (const p of people) {
-        const name = String(p.full_name || p.name || "").trim(), title = String(p.role || p.title || "Company contact");
+        const name = String(p.full_name || [p.first_name,p.last_name].filter(Boolean).join(" ") || "").trim(), title = String(p.job_title || "Company contact");
         const address = String(p.email || "").trim().toLowerCase();
         if (!name || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address) || address.split("@")[1] !== domain || p.email_status === "invalid" || lookupExclusions().addresses.has(address)) continue;
         const existing = contacts(c).find(f => f.name.toLowerCase() === name.toLowerCase());
         if (contacts(c).some(f => [best(f).email, ...(f.contact_candidates || [])].includes(address))) continue;
         if (existing) existing.contact_candidates = [...new Set([...(existing.contact_candidates || []), address])];
-        else { (c.extra_contacts ||= []).push({name, title, contact_candidates:[address], discovery_source:"pequod-labs/company-decision-maker-finder"}); }
+        else { if (contacts(c).filter(f => best(f).email).length >= 3) continue; (c.extra_contacts ||= []).push({name, title, contact_candidates:[address], discovery_source:"code_crafter/leads-finder"}); }
         added++;
       }
-      c.discovery_attempted = Date.now();
+      c.leads_discovery_attempted = Date.now();
     }
-    if (matched) companies.forEach(p => p.c.discovery_attempted = Date.now());
+    if (matched) companies.forEach(p => p.c.leads_discovery_attempted = Date.now());
     save(); render(); store.set(key, null);
     say("discoverStatus", matched ? `Found ${added} additional named company addresses. Verify mailboxes, then review up to three recipients per company.` : "No company rows matched. Check the Apify run for quota, plan or provider errors; no contacts were invented.", !matched);
   } catch (e) {

@@ -23,7 +23,8 @@ summary{cursor:pointer;padding:12px 14px;display:flex;gap:10px;align-items:cente
 summary::before{content:"▸";color:var(--muted)}details[open] summary::before{content:"▾"}
 .name{font-weight:600}.meta{color:var(--muted);font-size:13px;margin-left:auto;text-align:right}
 .badge{font-size:12px;padding:1px 8px;border-radius:99px;border:1px solid currentColor;white-space:nowrap}
-.valid{color:var(--ok)}.unknown,.guess{color:var(--warn)}.site{color:var(--accent)}.none{color:var(--muted)}
+.verified,.valid{color:var(--ok)}.unknown,.guess{color:var(--warn)}.site{color:var(--accent)}.invalid{color:var(--err)}.none,.manual{color:var(--muted)}
+.quality-dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:currentColor;margin-right:7px}.history-tabs{display:flex;gap:6px;flex-wrap:wrap;margin-top:18px}.history-tabs button[aria-selected=true]{border-color:var(--accent);color:var(--accent)}.history-scroll{max-height:390px;overflow:auto;margin-top:8px}.history-scroll table{width:100%;font-size:13px;text-align:left;border-collapse:collapse}.history-scroll th{position:sticky;top:0;background:var(--card)}.history-scroll td,.history-scroll th{padding:8px;border-bottom:1px solid var(--line)}
 .body{padding:0 14px 14px;border-top:1px solid var(--line)}.r{margin:10px 0 0;font-size:14px;overflow-wrap:anywhere}.r b{color:var(--muted);font-weight:500;display:inline-block;width:64px}
 .one{color:var(--muted);font-size:14px;margin:10px 0 0}
 pre{white-space:pre-wrap;font:inherit;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:12px;margin:10px 0}
@@ -31,10 +32,11 @@ pre{white-space:pre-wrap;font:inherit;background:var(--bg);border:1px solid var(
 button,a.btn{font:inherit;font-size:13px;cursor:pointer;border-radius:8px;padding:6px 12px;border:1px solid var(--line);background:var(--card);color:var(--fg);text-decoration:none}
 button.primary{background:var(--accent);border-color:var(--accent);color:#fff}button:disabled{opacity:.5;cursor:default}
 a.lnk{color:var(--muted);font-size:13px}
+.review-toolbar{position:sticky;top:8px;z-index:2;display:flex;gap:10px;align-items:center;flex-wrap:wrap;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px;margin-top:12px}.review-count{font-size:14px;font-weight:600}.review-route{font-size:13px;color:var(--muted);flex:1}.review-list{display:grid;gap:8px;margin-top:10px}.review-message{margin:0}.review-message summary{align-items:flex-start}.review-pick{display:flex;gap:8px;align-items:flex-start;min-width:0;flex:1;color:var(--fg);cursor:pointer}.review-pick input{width:auto;margin-top:4px}.review-destination{display:block;font-weight:600;overflow-wrap:anywhere}.review-from{display:block;font-size:13px;color:var(--muted);margin-top:2px}.review-message .body{padding-top:12px}.review-message textarea{min-height:160px}.review-status{font-size:13px;color:var(--muted);margin:0 0 10px}.review-status.warn{color:var(--warn)}
 footer{color:var(--muted);font-size:13px;margin-top:32px}
 </style></head><body><main>
 <h1>YC Founder Outreach</h1>
-<p class="sub">Pick a YC batch, find founder emails, and write personalised cold emails from one template. Free without any keys; everything you type stays in your browser.</p>
+<p class="sub">Pick a YC batch, find founder emails, and write personalised cold emails using one or two templates. Draft for free, then review and schedule emails from your own mailbox.</p>
 
 <section class="panel">
   <h2>1. Your details</h2>
@@ -44,12 +46,18 @@ footer{color:var(--muted);font-size:13px;margin-top:32px}
     <label class="f">GitHub<input data-k="github" placeholder="https://github.com/..."></label>
     <label class="f">Resume link<input data-k="resume" placeholder="https://..."></label>
   </div>
-  <h2>2. Email template</h2>
-  <label class="f">Subject<input data-k="subject"></label>
-  <label class="f" style="margin-top:10px">Body<textarea data-k="body"></textarea></label>
+  <h2>2. Email templates</h2>
+  <label class="f">Template A · Subject<input data-k="subject"></label>
+  <label class="f" style="margin-top:10px">Template A · Body<textarea data-k="body"></textarea></label>
+  <label class="chk" style="margin-top:12px"><input id="rotateTemplates" type="checkbox">Alternate templates A and B for each sender</label>
+  <div id="templateB" hidden>
+    <label class="f" style="margin-top:10px">Template B · Subject<input data-k="subject_b"></label>
+    <label class="f" style="margin-top:10px">Template B · Body<textarea data-k="body_b"></textarea></label>
+    <p class="ph">Each sender alternates A, B, A, B across sending attempts. Review both personalized drafts before queueing. Queued drafts keep their saved wording.</p>
+  </div>
   <p class="ph" id="vars">Click to insert: <code>{first_name}</code><code>{company}</code><code>{one_liner}</code><code>{batch}</code><code>{my_name}</code><code>{portfolio}</code><code>{github}</code><code>{resume}</code>
   &nbsp;<button id="reset" type="button">Reset template</button></p>
-  <p class="ph">Lines like <code>resume: {resume}</code> are dropped when you leave that field empty. Email labels: <span class="badge valid">verified</span> / <span class="badge unknown">unverified</span> come from Apify (step 4), <span class="badge site">on site</span> is listed on the company's website, <span class="badge guess">guess</span> is the most common pattern (right about 80% of the time) and may bounce.</p>
+  <p class="ph">Lines like <code>resume: {resume}</code> are dropped when you leave that field empty. <span class="badge verified">mailbox verified</span> means a recent SMTP and catch-all check passed. The older <span class="badge valid">checked</span> label only covers format/domain checks. <span class="badge site">on site</span> is published on the company's website; <span class="badge guess">guess</span> is a suggested pattern. Every queued recipient needs mailbox verification before sending.</p>
 </section>
 
 <section class="panel">
@@ -62,20 +70,66 @@ footer{color:var(--muted);font-size:13px;margin-top:32px}
 </section>
 
 <section class="panel">
-  <h2>4. Find verified emails <span style="font-weight:400;color:var(--muted)">(optional)</span></h2>
-  <p class="ph" style="margin:0 0 10px">Without this you get emails listed on company sites plus pattern guesses like <code>first@domain</code> (right about 80% of the time). For verified emails, paste your own
-    <a href="https://console.apify.com/settings/integrations" target="_blank" rel="noopener">Apify API token</a>. Lookups run from your browser straight to Apify on your account; the token is never sent to this site's server and isn't saved.</p>
+  <h2>4. Find contacts and verify mailboxes</h2>
+  <p class="ph" style="margin:0 0 10px">Find up to three relevant named contacts per company, then verify their mailboxes before sending. SMTP verification checks mailbox responses and catch-all domains; unknown, risky and invalid results cannot auto-send. Your old “checked” labels are only format/domain checks. Verification reduces bounces but cannot guarantee delivery. Paste your own
+    <a href="https://console.apify.com/settings/integrations" target="_blank" rel="noopener">Apify API token</a>. Lookups run on your Apify account. Locally, the token is also used temporarily by the server to import the completed verification evidence; the token is never saved.</p>
   <div class="row2">
     <label class="f" style="flex:2">Apify token<input id="token" type="password" placeholder="apify_api_..." autocomplete="off"></label>
-    <label class="f" style="flex:1">Max USD per run (50 founders)<input id="cap" type="number" min="0.1" step="0.1" value="1"></label>
-    <button id="enrich" type="button" disabled>Find emails</button>
+    <label class="f" style="flex:1">Max USD per run (50 addresses)<input id="cap" type="number" min="0.1" step="0.1" value="1"></label>
+    <button id="discover" type="button" disabled>Find more company contacts</button>
+    <button id="checkDomains" type="button" disabled>Check domains</button>
+    <button id="enrich" type="button" disabled>Verify mailboxes</button>
+    <button id="testMailboxes" type="button" disabled>Test up to 10 mailboxes</button>
+    <button id="reimportMailChecks" type="button">Refresh saved results</button>
   </div>
+  <p class="ph">New lookups skip already sent companies and recipients. Mailbox verification also checks waiting drafts, excluding completed recipients. Contact discovery: up to 5 companies per run, capped by the budget above. Free Apify accounts may be limited to 5 company domains per day. Newly found contacts are drafts until you review and queue them.</p>
+  <p class="status" id="discoverStatus"></p>
+  <p class="ph">Check domains screens address format and mail-domain records with the original validator. “Checked (domain)” does not confirm that the person's mailbox exists; Verify mailboxes is still required for automatic sending.</p>
+  <p class="status" id="domainStatus"></p>
   <p class="status" id="enrichStatus"></p>
+  <p class="ph">Mailbox verification uses BounceVerify. Test up to 10 first to compare new candidates with your configured sender mailboxes and a few known hard bounces. The test sends no messages and cannot release queue drafts.</p>
+  <p class="status" id="testStatus" style="white-space:pre-wrap"></p>
+</section>
+
+<section class="panel">
+  <h2>5. Review and auto-send</h2>
+  <p class="ph">Each selected account sends one different email in a shared batch every two minutes: up to three messages, then a two-minute pause. If a mailbox sent recently, the next batch waits until it is ready. Review opens compact routes so you can see the recipient and planned sender without scrolling through every draft.</p>
+  <p class="ph">Messages are marked sent automatically only after the sending mailbox accepts them. The same recipient cannot be queued twice. Inbox placement cannot be guaranteed; personal, relevant messages and accurate addresses help, while guessed addresses may bounce.</p>
+  <div id="senderAccounts" class="grid" style="margin-top:12px"></div>
+  <div class="row2" style="margin-top:12px">
+    <button id="reviewMail" type="button" disabled>Review loaded companies</button>
+    <label class="f">Daily limit (rolling 24 hours)<input id="dailyLimit" type="number" value="20" min="1" max="150"></label>
+    <label class="f">Minutes between batches<input id="sendInterval" type="number" value="2" min="1" max="60"></label>
+    <button id="startMail" class="primary" type="button" disabled>Start sending</button>
+    <button id="pauseMail" type="button" disabled>Pause</button>
+    <button id="cancelMail" type="button" disabled>Cancel pending</button>
+  </div>
+  <p class="status" id="mailStatus" aria-live="polite">Checking sending service…</p>
+  <p class="status" id="mailNextStep" aria-live="polite"></p>
+  <div id="mailReview" hidden>
+    <div class="review-toolbar">
+      <span class="review-count" id="reviewCount">0 selected</span>
+      <span class="review-route" id="reviewRoute"></span>
+      <label class="chk" id="includeSuggestionsLabel"><input id="includeSuggestions" type="checkbox" checked> include suggested addresses</label>
+      <button id="queueMail" class="primary" type="button">Queue selected</button>
+    </div>
+    <div id="reviewList" class="review-list"></div>
+  </div>
+  <div class="row2" style="margin-top:12px">
+    <input id="blockEmail" type="email" placeholder="Email to stop contacting" aria-label="Email to block">
+    <button id="blockMail" type="button" disabled>Block address</button>
+    <button id="bounceMail" type="button">Mark bounced</button>
+    <button id="scanBounces" type="button">Check Gmail bounces</button>
+  </div>
+  <p class="ph">Bounce scans read recent delivery reports from the three connected Gmail inboxes without marking them read. Hard-bounced addresses are blocked across all sending accounts.</p>
+  <div id="historyTabs" class="history-tabs" role="tablist" aria-label="Mail history"></div>
+  <input id="historySearch" placeholder="Search company or recipient in history" aria-label="Search mail history" style="margin-top:8px">
+  <div id="mailHistory" class="history-scroll"></div>
 </section>
 
 <div class="bar">
   <input id="q" placeholder="Search company or founder" aria-label="Search">
-  <select id="st" aria-label="Email type"><option value="">All emails</option><option value="valid">Verified</option><option value="unknown">Unverified</option><option value="site">Found on site</option><option value="guess">Guess</option><option value="none">No email</option></select>
+  <select id="st" aria-label="Email type"><option value="">All emails</option><option value="verified">Mailbox verified</option><option value="valid">Domain checked</option><option value="unknown">Unverified</option><option value="site">Found on site</option><option value="guess">Guess</option><option value="invalid">Invalid</option><option value="none">No email</option></select>
   <label class="chk"><input type="checkbox" id="hideSent"> hide sent</label>
   <button id="all" type="button">Expand all</button>
 </div>
@@ -104,13 +158,18 @@ github: {github}
 resume: {resume}`
 };
 const KEY = "yc-outreach-v2";
-const ACTOR = "snipercoder~email-finder-by-name-and-domain";
+const ACTOR = "bounceverify~bounceverify-email-verifier";
+const DOMAIN_ACTOR = "vulnv~email-validator";
+const DISCOVERY_ACTOR = "pequod-labs~company-decision-maker-finder";
 const APIFY = "https://api.apify.com/v2";
+const APIFY_TIMEOUT_MS = 8 * 60 * 1000;
 const store = { get(k, d) { try { return JSON.parse(localStorage.getItem(k)) ?? d } catch { return d } },
                 set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)) } catch {} } };
 let tpl = Object.assign({}, DEFAULTS, store.get(KEY, {}));
+tpl.subject_b ??= ""; tpl.body_b ??= ""; tpl.rotate ??= false;
 let sent = new Set(store.get(KEY + "-sent", []));
 let ALL = [], DATA = [], batch = "";
+let CHECKS = store.get(KEY + "-mailbox-checks", {}), historyTab = "queue", historyPage = 0;
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const url = s => /^https?:\/\//i.test(s || "") ? esc(s) : "";
@@ -124,21 +183,32 @@ async function api(params) {
   return j;
 }
 
-// Best email for a founder: verified > unverified (Apify) > on the company site > pattern guess
+// Prefer addresses that passed the available checks and public addresses.
 function best(f) {
-  if (f.apify_email) return { email: f.apify_email, kind: f.apify_status === "valid" ? "valid" : "unknown", label: f.apify_status === "valid" ? "verified" : "unverified" };
-  if (f.emails_found?.length) return { email: f.emails_found[0], kind: "site", label: "on site" };
-  if (f.email_guesses?.length) return { email: f.email_guesses[0], kind: "guess", label: "guess" };
-  return { email: "", kind: "none", label: "no email" };
+  const candidates = [...new Set([f.apify_email, ...(f.emails_found || []), ...(f.email_guesses || []), ...(f.contact_candidates || [])].filter(Boolean).map(e => e.trim().toLowerCase()))];
+  const legacyInvalid = ["invalid", "invalid_format", "undeliverable", "disposable"].includes(String(f.apify_status || "").toLowerCase());
+  const usable = candidates.filter(e => !mailState?.suppressed?.includes(e) && CHECKS[e]?.verdict !== "invalid" && !(legacyInvalid && e === f.apify_email?.toLowerCase()));
+  const verified = usable.find(e => CHECKS[e]?.verdict === "deliverable" && CHECKS[e].checked >= Date.now() / 1000 - 7 * 86400);
+  if (verified) return { email: verified, kind: "verified", label: "mailbox verified" };
+  const validation = String(f.apify_status || "").trim().toLowerCase();
+  if (f.apify_email && validation === "valid" && usable.includes(f.apify_email.toLowerCase())) return { email: f.apify_email, kind: "valid", label: "checked (domain)" };
+  const site = (f.emails_found || []).find(e => usable.includes(e.toLowerCase()));
+  if (site) return { email: site, kind: "site", label: "on site" };
+  const discovered = (f.contact_candidates || []).find(e => usable.includes(e.toLowerCase()));
+  if (discovered) return { email: discovered, kind: "unknown", label: "found · needs verification" };
+  if (f.apify_email && !["invalid", "invalid_format", "undeliverable", "disposable"].includes(validation) && usable.includes(f.apify_email.toLowerCase())) return { email: f.apify_email, kind: "unknown", label: "unverified" };
+  const guess = (f.email_guesses || []).find(e => usable.includes(e.toLowerCase()));
+  if (guess) return { email: guess, kind: "guess", label: "guess" };
+  return { email: "", kind: candidates.length ? "invalid" : "none", label: candidates.length ? "invalid / blocked" : "no email" };
 }
-const RANK = { valid: 0, unknown: 1, site: 2, guess: 3, none: 4 };
-// Primary contact: best email first, then CEO
+const RANK = { verified: -1, valid: 0, site: 1, unknown: 2, guess: 3, none: 4, invalid: 5 };
+// Rank known founders and discovered contacts by email evidence, then role.
 function contacts(c) {
-  return [...(c.founders || [])].sort((a, b) => (RANK[best(a).kind] - RANK[best(b).kind]) || (!/ceo/i.test(a.title) - !/ceo/i.test(b.title)));
+  return [...(c.founders || []), ...(c.extra_contacts || [])].sort((a, b) => (RANK[best(a).kind] - RANK[best(b).kind]) || (!/ceo/i.test(a.title) - !/ceo/i.test(b.title)));
 }
 
-function fill(text, c) {
-  const f = contacts(c)[0] || { name: "" };
+function fill(text, c, founder) {
+  const f = founder || contacts(c)[0] || { name: "" };
   const vars = { first_name: f.name.split(" ")[0] || "there", company: c.name, one_liner: (c.one_liner || "what you're building").replace(/\.$/, "").toLowerCase(),
                  batch: c.batch, my_name: tpl.my_name, portfolio: tpl.portfolio, github: tpl.github, resume: tpl.resume };
   const out = text.replace(/\{(\w+)\}/g, (m, k) => k in vars ? vars[k] : m);
@@ -146,6 +216,7 @@ function fill(text, c) {
 }
 
 function render() {
+  $("reviewMail").disabled = !mailState?.available || !DATA.length;
   $("list").innerHTML = DATA.map((c, i) => {
     const fs = contacts(c), f = fs[0], b = f ? best(f) : { kind: c.founders ? "none" : "", label: c.error ? "error" : c.founders ? "no email" : "loading…" };
     const key = (c.name + " " + fs.map(o => o.name).join(" ")).toLowerCase();
@@ -176,12 +247,12 @@ function draft(d) {
   d.querySelector("pre").textContent = body;
   d.querySelector(".mail").href = `mailto:${encodeURIComponent(to ? best(to).email : "")}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 }
-function update() { document.querySelectorAll("details[open]").forEach(draft) }
+function update() { document.querySelectorAll("#list details[open]").forEach(draft) }
 
 function filter() {
   const q = $("q").value.trim().toLowerCase(), st = $("st").value, hide = $("hideSent").checked;
   let n = 0;
-  document.querySelectorAll("details").forEach(d => {
+  document.querySelectorAll("#list details").forEach(d => {
     const ok = (!q || d.dataset.k.includes(q)) && (!st || d.dataset.s === st) && !(hide && d.classList.contains("sent"));
     d.style.display = ok ? "" : "none"; n += ok;
   });
@@ -190,8 +261,9 @@ function filter() {
 
 // ALL = every company in the batch; DATA = the ones whose founders are loaded (what the list shows)
 const PAGE = 20;
-const save = () => store.set(`${KEY}-batch-${batch}`, ALL);
-const busy = on => { $("load").disabled = $("more").disabled = on; $("enrich").disabled = on || !DATA.length };
+const save = () => store.set(`${KEY}-batch-v3-${batch}`, ALL);
+let lookupBusy = false;
+const busy = on => { lookupBusy = on; $("load").disabled = $("more").disabled = on; $("enrich").disabled = on || (!DATA.length && !mailState?.messages.some(m => ["held","pending"].includes(m.status))); $("testMailboxes").disabled = on || !DATA.length; $("reimportMailChecks").disabled = on; $("discover").disabled = $("checkDomains").disabled = on || !DATA.length; $("batch").disabled = on; };
 function progress() {
   const left = ALL.length - DATA.length, failed = DATA.filter(c => c.error).length;
   say("loadStatus", `${DATA.length} of ${ALL.length} companies loaded${failed ? `, ${failed} couldn't be loaded` : ""}.`, failed > 0);
@@ -203,7 +275,7 @@ async function loadBatch() {
   batch = $("batch").value;
   if (!batch) return;
   busy(true);
-  ALL = store.get(`${KEY}-batch-${batch}`, null) || [];
+  ALL = store.get(`${KEY}-batch-v3-${batch}`, null) || [];
   try {
     if (!ALL.length) {
       say("loadStatus", "Loading companies…");
@@ -241,49 +313,468 @@ async function loadMore() {
 
 async function apify(method, path, token, body) {
   const r = await fetch(APIFY + path, { method, headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-                                        body: body ? JSON.stringify(body) : undefined });
+                                        signal: AbortSignal.timeout(30000), body: body ? JSON.stringify(body) : undefined });
   const j = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(j.error?.message || `Apify HTTP ${r.status}`);
   return j;
 }
 
+async function actorRun(actor, input, token, cap, statusId, purpose = "") {
+  const key = KEY + "-run-" + actor + purpose;
+  const resume = store.get(key, null);
+  let run = resume ? (await apify("GET", `/actor-runs/${resume.id}`, token)).data
+    : (await apify("POST", `/acts/${actor}/runs?maxTotalChargeUsd=${cap}`, token, input)).data;
+  store.set(key, { id: run.id });
+  const deadline = Date.now() + APIFY_TIMEOUT_MS;
+  while (["READY", "RUNNING", "TIMING-OUT", "ABORTING"].includes(run.status)) {
+    say(statusId, `Apify run ${run.id}: ${run.status.toLowerCase()}…`);
+    if (Date.now() >= deadline) {
+      const stopped = await apify("POST", `/actor-runs/${run.id}/abort`, token).then(() => true).catch(() => false);
+      if (stopped) store.set(key, null);
+      throw new Error(stopped ? "Run exceeded eight minutes; abort requested. Partial results were not approved." : `Could not stop run ${run.id}. Check Apify Runs before starting another.`);
+    }
+    await sleep(4000);
+    run = (await apify("GET", `/actor-runs/${run.id}`, token)).data;
+  }
+  if (run.status !== "SUCCEEDED") { store.set(key, null); throw new Error(`Run ended as ${run.status}`); }
+  const items = await apify("GET", `/datasets/${run.defaultDatasetId}/items?clean=true&format=json&limit=1000`, token);
+  if (!Array.isArray(items)) throw new Error("Unexpected Apify results");
+  return { run, items, key };
+}
+
+// Completed outreach is excluded from new paid lookups. Explicit waiting drafts
+// still need checking even when another person at their company was already sent.
+function lookupExclusions() {
+  const history = mailState?.messages || [];
+  return {
+    companies: new Set([...sent, ...history.filter(m => ["sent","bounced","sending","uncertain"].includes(m.status)).map(m => m.company)].map(companyKey)),
+    addresses: new Set([...(mailState?.suppressed || []), ...history.filter(m => ["sent","sending","uncertain","bounced"].includes(m.status)).map(m => m.recipient.trim().toLowerCase())])
+  };
+}
+const companyKey = name => String(name || "").trim().toLowerCase();
+async function syncLookupHistory(statusId) {
+  // Refresh immediately before building a paid request, not from the polling snapshot.
+  if (!mailState?.available && !["localhost", "127.0.0.1"].includes(location.hostname)) return true;
+  try {
+    mailState = await mailRequest();
+    CHECKS = mailState.checks || {};
+    for (const m of mailState.messages.filter(m => ["sent","bounced"].includes(m.status))) sent.add(m.company);
+    store.set(KEY + "-sent", [...sent]);
+    return true;
+  } catch (e) {
+    say(statusId, `Could not load sending history; no Apify run was started. ${e.message}`, true);
+    return false;
+  }
+}
+function freshLookupTargets() {
+  const excluded = lookupExclusions();
+  return DATA.filter(c => !excluded.companies.has(companyKey(c.name)))
+    .flatMap(c => contacts(c).map(f => ({f, email:best(f).email.toLowerCase()})))
+    .filter(p => p.email && !excluded.addresses.has(p.email));
+}
+async function checkDomains() {
+  const token = $("token").value.trim(), cap = Math.max(0.1, +$("cap").value || 1);
+  if (!token) return say("domainStatus", "Paste your Apify token first.", true);
+  if (!await syncLookupHistory("domainStatus")) return;
+  const targets = freshLookupTargets();
+  const addresses = [...new Set(targets.map(p => p.email))];
+  const loadedCount = new Set(DATA.flatMap(c => contacts(c).map(f => best(f).email.toLowerCase())).filter(Boolean)).size;
+  const skipped = Math.max(0, loadedCount - addresses.length);
+  const resume = store.get(KEY + "-run-" + DOMAIN_ACTOR, null);
+  if (!addresses.length && !resume) return say("domainStatus", "No unsent candidate addresses to screen. Already sent companies and recipients are skipped.");
+  if (!confirm(resume ? "Resume the existing domain check?" : `Check format and domains for ${addresses.length} new, unsent addresses? ${skipped} already contacted addresses skipped. ${Math.ceil(addresses.length/50)} Apify runs, each capped at $${cap}. This does not verify mailboxes or approve sending.`)) return;
+  busy(true);
+  let passed = 0, tested = 0;
+  try {
+    let remaining = [...addresses], recovery = !!resume;
+    while (remaining.length || recovery) {
+      const chunk = remaining.slice(0,50), wasRecovery = recovery;
+      const {items, key} = await actorRun(DOMAIN_ACTOR, {emails:chunk}, token, cap, "domainStatus");
+      const results = new Map(items.map(item => [String(item.input_email || item.email || "").trim().toLowerCase(), item]));
+      for (const [email, item] of results) {
+        if (!email || String(item.status).toLowerCase() === "error") continue;
+        const valid = item.is_valid === true || String(item.status).toLowerCase() === "valid";
+        tested++; if (valid) passed++;
+        for (const p of targets.filter(p => p.email === email)) {
+          p.f.apify_checked = true; p.f.apify_email = email;
+          p.f.apify_status = valid ? "valid" : String(item.status || "unverified").toLowerCase();
+        }
+      }
+      save(); render(); store.set(key, null);
+      const processed = new Set(wasRecovery ? results.keys() : chunk);
+      remaining = remaining.filter(email => !processed.has(email)); recovery = false;
+    }
+    say("domainStatus", tested ? `Done: ${passed}/${tested} addresses passed format/domain checks. Mailbox verification is still required to send.` : "No usable domain verdicts returned; no addresses were approved to send.", !tested);
+  } catch (e) { say("domainStatus", `${e.message}. Click again to resume saved progress.`, true); }
+  finally { busy(false); updateMailControls(); }
+}
+
+function mailboxVerdict(item) {
+  const status = String(item.status || "unknown").toLowerCase();
+  const noRisk = ["", "none"].includes(String(item.risk_type || "").trim().toLowerCase());
+  if (status === "valid" && item.smtp_valid === true && item.is_catch_all === false && item.is_disposable === false && item.syntax_valid === true && item.domain_exists === true && item.mx_found === true && noRisk && !item.error) return "deliverable";
+  if (item.is_catch_all === true || ["catch-all","catch_all"].includes(status)) return "catch-all";
+  if (item.is_disposable === true || ["risky","disposable"].includes(status)) return "risky";
+  if (status === "invalid") return "invalid";
+  return "unknown";
+}
+async function reimportMailChecks() {
+  const token = $("token").value.trim();
+  if (!token) return say("enrichStatus", "Paste your Apify token first.", true);
+  if (!await syncLookupHistory("enrichStatus")) return;
+  if (!mailState?.available) return say("enrichStatus", "Start the local server to import saved verification evidence.", true);
+  const runs = [...new Set(Object.values(CHECKS).filter(c => c.run_id && c.checked >= Date.now()/1000 - 7*86400).map(c => c.run_id))];
+  if (!runs.length) return say("enrichStatus", "No recent saved verification runs to import.");
+  busy(true); $("reimportMailChecks").disabled = true;
+  let imported=0, skipped=0;
+  try {
+    for (const run_id of runs) {
+      try {
+        await mailRequest({action:"import_checks", provider:"bounceverify", run_id, apify_token:token});
+        imported++;
+      } catch { skipped++; }
+    }
+    await refreshMail(); render();
+    say("enrichStatus", `Refreshed ${imported} completed BounceVerify run${imported === 1 ? "" : "s"}; ${skipped} other or unavailable runs skipped. No new paid runs started.`, !imported);
+  } finally { busy(false); $("reimportMailChecks").disabled = false; updateMailControls(); }
+}
+async function testMailboxes() {
+  const token = $("token").value.trim(), cap = Math.max(0.1, +$("cap").value || 1);
+  if (!token) return say("testStatus", "Paste your Apify token first.", true);
+  if (!await syncLookupHistory("testStatus")) return;
+  const controls = [...new Set([
+    ...(mailState?.accounts || []).filter(a => a.configured).map(a => a.email),
+    ...(mailState?.messages || []).filter(m => m.status === "bounced").slice(0,3).map(m => m.recipient)
+  ].filter(Boolean).map(e => e.trim().toLowerCase()))].slice(0,6);
+  const addresses = [...new Set([...controls, ...freshLookupTargets().map(p => p.email)])].slice(0,10);
+  const resume = store.get(KEY + "-run-" + ACTOR + "-sample", null);
+  if (!addresses.length && !resume) return say("testStatus", "Load new contacts before testing.");
+  if (!confirm(resume ? "Resume the saved BounceVerify sample? No sending permission will be granted." : `Test ${addresses.length} addresses with BounceVerify, capped at $${cap}? Includes ${controls.length} control addresses (your sender mailboxes and known bounces). No messages will be sent or released from hold.\n\n${addresses.join("\n")}`)) return;
+  busy(true);
+  try {
+    const {items, key} = await actorRun(ACTOR, {emails:addresses, concurrency:5, timeoutSecs:120, skipInvalidSyntax:true}, token, cap, "testStatus", "-sample");
+    const bad = new Set((mailState?.messages || []).filter(m => m.status === "bounced").map(m => m.recipient.toLowerCase()));
+    const wrong = items.some(item => bad.has(String(item.email || "").toLowerCase()) && mailboxVerdict(item) === "deliverable");
+    say("testStatus", `${wrong ? "Warning: a known bounced address was marked deliverable. Do not rely on this provider for the full batch." : "Sample complete. Review these results before running full verification."}\n${items.map(item => `${item.email || "No address"}: ${mailboxVerdict(item)}${item.reason ? " · " + item.reason : ""}`).join("\n")}\nNo queue drafts were released.`, wrong);
+    store.set(key, null);
+  } catch (e) { say("testStatus", `${e.message}. Click Test again to resume saved progress.`, true); }
+  finally { busy(false); }
+}
 async function enrich() {
   const token = $("token").value.trim(), cap = Math.max(0.1, +$("cap").value || 1);
   if (!token) return say("enrichStatus", "Paste your Apify token first.", true);
-  const people = DATA.flatMap(c => (c.founders || []).filter(f => f.name && c.domain && !f.apify_checked).map(f => ({ f, name: f.name, domain: c.domain })));
-  if (!people.length) return say("enrichStatus", "Nothing left to look up in this batch.");
-  const runs = Math.ceil(people.length / 50);
-  if (!confirm(`Look up ${people.length} founders on your Apify account? That's ${runs} run${runs > 1 ? "s" : ""}, each capped at $${cap}.`)) return;
+  if (!await syncLookupHistory("enrichStatus")) return;
+  const excluded = lookupExclusions();
+  const addresses = [...new Set([...freshLookupTargets().map(p => p.email), ...(mailState?.messages || []).filter(m => ["pending", "held"].includes(m.status)).map(m => m.recipient)].filter(Boolean).map(e => e.trim().toLowerCase()))]
+    .filter(e => !excluded.addresses.has(e) && !(CHECKS[e]?.verdict === "deliverable" && CHECKS[e].checked >= Date.now()/1000 - 7*86400));
+  const resume = store.get(KEY + "-run-" + ACTOR, null);
+  if (!addresses.length && !resume) return say("enrichStatus", "No unverified candidate or held queue address remains. Find more company contacts for missing addresses.");
+  const runs = Math.max(1, Math.ceil(addresses.length/50));
+  if (!confirm(resume ? "Resume/import the existing BounceVerify check? No duplicate run will be started for it." : `Verify ${addresses.length} unsent mailboxes with BounceVerify? ${runs} runs, each capped at $${cap}. Only positive, non-catch-all results can send.`)) return;
   busy(true);
-  let found = 0;
+  let passed = 0, tested = 0;
   try {
-    // Large single runs crash the actor, so send 50 at a time and keep results as each finishes
-    for (let i = 0; i < people.length; i += 50) {
-      const chunk = people.slice(i, i + 50);
-      say("enrichStatus", `Run ${i / 50 + 1}/${runs}: starting…`);
-      let run = (await apify("POST", `/acts/${ACTOR}/runs?maxTotalChargeUsd=${cap}&memory=1024`, token,
-                             { names: chunk.map(p => p.name), domains: chunk.map(p => p.domain) })).data;
-      while (["READY", "RUNNING"].includes(run.status)) {
-        say("enrichStatus", `Run ${i / 50 + 1}/${runs}: ${run.status.toLowerCase()}…`);
-        await sleep(5000);
-        run = (await apify("GET", `/actor-runs/${run.id}`, token)).data;
+    let remaining = [...addresses], recovery = !!resume;
+    while (remaining.length || recovery) {
+      const chunk = remaining.slice(0,50), wasRecovery = recovery;
+      const {run, items, key} = await actorRun(ACTOR, {emails:chunk, concurrency:5, timeoutSecs:120, skipInvalidSyntax:true}, token, cap, "enrichStatus");
+      if (mailState?.available) {
+        await mailRequest({action:"import_checks", provider:"bounceverify", run_id:run.id, apify_token:token});
+        await refreshMail();
+      } else {
+        for (const item of items) if (item.email) CHECKS[item.email.toLowerCase()] = {verdict:mailboxVerdict(item), checked:Date.parse(run.finishedAt)/1000, run_id:run.id};
       }
-      if (run.status !== "SUCCEEDED") throw new Error(`Apify run ended as ${run.status}`);
-      const items = await apify("GET", `/datasets/${run.defaultDatasetId}/items?clean=true&format=json`, token);
-      for (const p of chunk) {
-        const hit = items.find(it => it.Found && it.Email && String(it.Name).toLowerCase() === p.name.toLowerCase() && String(it.Domain).toLowerCase() === p.domain);
-        p.f.apify_checked = true;
-        if (hit) { p.f.apify_email = String(hit.Email).toLowerCase(); p.f.apify_status = hit.Validation || ""; found++ }
-      }
-      save(); render();
+      for (const item of items) if (item.email) { tested++; if (mailboxVerdict(item) === "deliverable") passed++; }
+      store.set(KEY + "-mailbox-checks", CHECKS);
+      store.set(key, null);
+      const processed = new Set(wasRecovery ? items.map(it => String(it.email || "").toLowerCase()) : chunk);
+      remaining = remaining.filter(e => !processed.has(e));
+      recovery = false;
+      render();
     }
-    say("enrichStatus", `Done: found ${found} of ${people.length} emails.`);
+    say("enrichStatus", tested ? `Done: ${passed}/${tested} mailboxes verified. Other results stay on hold or are invalid; only verified queue rows can send.` : "The provider returned no address verdicts. Check the run in Apify; nothing was approved to send.", !tested);
+  } catch (e) { say("enrichStatus", `${e.message}. Saved progress is retained; click again to resume.`, true); }
+  finally { busy(false); updateMailControls(); }
+}
+
+async function discoverContacts() {
+  const token = $("token").value.trim(), cap = Math.max(0.1, +$("cap").value || 1);
+  if (!token) return say("discoverStatus", "Paste your Apify token first.", true);
+  if (!await syncLookupHistory("discoverStatus")) return;
+  const excluded = lookupExclusions();
+  const companies = DATA.filter(c => !excluded.companies.has(companyKey(c.name)) && contacts(c).filter(f => best(f).email).length < 3 && (!c.discovery_attempted || Date.now()-c.discovery_attempted > 86400000)).map(c => {
+    try { return {c, domain:(c.domain || new URL(c.website).hostname).replace(/^www\./, "").toLowerCase()}; } catch { return null; }
+  }).filter(Boolean).slice(0,5);
+  const resume = store.get(KEY + "-run-" + DISCOVERY_ACTOR, null);
+  if (!companies.length && !resume) return say("discoverStatus", "Loaded companies are already sent, were searched today, or already have three contacts. Load fresh companies or retry tomorrow.");
+  if (!confirm(resume ? "Resume the existing contact-discovery run?" : `Find named contacts at ${companies.map(p => p.c.name).join(", ")}? One Apify run capped at $${cap}. Results still need mailbox verification and your review.`)) return;
+  busy(true);
+  try {
+    const {items, key} = await actorRun(DISCOVERY_ACTOR, {domainList:companies.map(p => p.domain), need:"email", targetPersona:{mode:"preset", preset:"founder_ceo"}, maxContactsPerDomain:3, returnAlternates:true, verifyEmails:true}, token, cap, "discoverStatus");
+    let added = 0, matched = 0;
+    for (const item of items) {
+      const domain = String(item.domain || item.company_domain || "").toLowerCase().replace(/^www\./, "");
+      const c = DATA.find(c => { try { return (c.domain || new URL(c.website).hostname).toLowerCase().replace(/^www\./, "") === domain; } catch { return false; } });
+      if (!c || !domain || lookupExclusions().companies.has(companyKey(c.name))) continue;
+      matched++;
+      const people = [item.decision_maker, ...(item.decision_makers || []).map(p => p.decision_maker || p), ...(item.alternates || []).map(p => p.decision_maker || p)].filter(Boolean);
+      for (const p of people) {
+        const name = String(p.full_name || p.name || "").trim(), title = String(p.role || p.title || "Company contact");
+        const address = String(p.email || "").trim().toLowerCase();
+        if (!name || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address) || address.split("@")[1] !== domain || p.email_status === "invalid" || lookupExclusions().addresses.has(address)) continue;
+        const existing = contacts(c).find(f => f.name.toLowerCase() === name.toLowerCase());
+        if (contacts(c).some(f => [best(f).email, ...(f.contact_candidates || [])].includes(address))) continue;
+        if (existing) existing.contact_candidates = [...new Set([...(existing.contact_candidates || []), address])];
+        else { (c.extra_contacts ||= []).push({name, title, contact_candidates:[address], discovery_source:"pequod-labs/company-decision-maker-finder"}); }
+        added++;
+      }
+      c.discovery_attempted = Date.now();
+    }
+    if (matched) companies.forEach(p => p.c.discovery_attempted = Date.now());
+    save(); render(); store.set(key, null);
+    say("discoverStatus", matched ? `Found ${added} additional named company addresses. Verify mailboxes, then review up to three recipients per company.` : "No company rows matched. Check the Apify run for quota, plan or provider errors; no contacts were invented.", !matched);
   } catch (e) {
-    say("enrichStatus", `Stopped: ${e.message}. Found ${found} so far; press again to continue.`, true);
-  } finally {
-    busy(false);
+    const savedRun = store.get(KEY + "-run-" + DISCOVERY_ACTOR, null);
+    say("discoverStatus", `${e.message}. ${savedRun ? "Click again to resume the saved run." : "No resumable run was saved. Retry after correcting the input or provider issue."}`, true);
+  }
+  finally { busy(false); }
+}
+
+let mailState = null, mailBusy = false, senderSignature = "";
+async function mailRequest(payload) {
+  const r = await fetch("/api/mail", payload ? {
+    method: "POST", headers: { "Content-Type": "application/json", "X-Outreach-Token": mailState?.token || "" },
+    body: JSON.stringify(payload)
+  } : { cache: "no-store" });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || `Sending service unavailable (HTTP ${r.status})`);
+  return j;
+}
+async function refreshMail() {
+  try {
+    const firstLoad = !mailState;
+    mailState = await mailRequest();
+    CHECKS = mailState.checks || {};
+    store.set(KEY + "-mailbox-checks", CHECKS);
+    if (firstLoad) {
+      $("dailyLimit").value = mailState.daily_limit;
+      $("sendInterval").value = mailState.interval_minutes;
+    }
+    const accounts = mailState.accounts || [];
+    const signature = JSON.stringify(accounts.map(a => [a.id, a.email, a.configured]));
+    if (signature !== senderSignature) {
+      senderSignature = signature;
+      $("senderAccounts").innerHTML = accounts.map(a => `<label class="f"><span class="chk"><input type="checkbox" class="sender-choice" value="${esc(a.id)}" ${mailState.selected_senders.includes(a.id) && a.configured ? "checked" : ""} ${a.configured ? "" : "disabled"}>${esc(a.email || "Primary mailbox")}</span><span>${a.configured ? "Ready · up to 50/day" : "App password needed in .env"}</span></label>`).join("");
+    }
+    const pending = mailState.messages.filter(m => m.status === "pending").length;
+    const completed = mailState.messages.filter(m => ["sent","bounced"].includes(m.status));
+    const held = mailState.messages.filter(m => m.status === "held").length;
+    for (const m of completed) sent.add(m.company);
+    store.set(KEY + "-sent", [...sent]);
+    document.querySelectorAll("#list details").forEach(d => {
+      const done = sent.has(DATA[d.dataset.i]?.name);
+      d.classList.toggle("sent", done);
+      d.querySelector('[data-a="sent"]').checked = done;
+    });
+    filter();
+    const next = new Date(Math.max(Date.now(), mailState.next_send * 1000)).toLocaleString();
+    say("mailStatus", mailState.configured
+      ? `${mailState.paused ? "Paused" : "Sending active"} · ${pending} ready · ${held} awaiting verification · ${completed.length} attempted successfully at sender · limit ${mailState.daily_limit}/24h${!mailState.paused && pending ? ` · next batch no earlier than ${next}` : ""}`
+      : "Mailboxes need app passwords. Add a separate SMTP password for each account in .env, then restart the server or background service. You can review and queue drafts now.");
+    $("reviewMail").disabled = !DATA.length;
+    updateMailControls();
+    $("pauseMail").disabled = mailBusy || mailState.paused;
+    $("cancelMail").disabled = mailBusy || (!pending && !held);
+    $("blockMail").disabled = mailBusy;
+    renderHistory();
+    if (!lookupBusy) busy(false);
+  } catch (e) {
+    mailState = null;
+    ["reviewMail", "startMail", "pauseMail", "cancelMail", "blockMail"].forEach(id => $(id).disabled = true);
+    say("mailNextStep", "");
+    say("mailStatus", "Auto-send requires the local server: python3 serve.py. The Vercel version supports drafting and email lookup; hosted sending needs a persistent scheduler and database.");
   }
 }
+function renderHistory() {
+  const messages = mailState?.messages || [];
+  const groups = {queue:["pending","sending","held"],sent:["sent"],issues:["bounced","invalid","failed","uncertain"],all:null};
+  const titles = {queue:"Queue",sent:"Sent",issues:"Bounced / failed",all:"All"};
+  $("historyTabs").innerHTML = Object.keys(groups).map(key => `<button type="button" role="tab" data-tab="${key}" aria-selected="${historyTab === key}">${titles[key]} (${messages.filter(m => !groups[key] || groups[key].includes(m.status)).length})</button>`).join("");
+  const query = $("historySearch").value.trim().toLowerCase();
+  const rows = messages.filter(m => (!groups[historyTab] || groups[historyTab].includes(m.status)) && (!query || `${m.company} ${m.recipient} ${m.sender}`.toLowerCase().includes(query)));
+  if (historyTab === "queue") rows.sort((a,b) => (a.status === "held")-(b.status === "held") || a.priority-b.priority || a.id-b.id);
+  historyPage = Math.min(historyPage, Math.max(0,Math.ceil(rows.length/20)-1));
+  const labels = {verified:"Mailbox verified",valid:"Format/domain checked",site:"Published on site",guess:"Pattern guess",unknown:"Unverified discovery",manual:"Manually entered"};
+  $("mailHistory").innerHTML = rows.length ? `<table><thead><tr><th>Company</th><th>Recipient</th><th>Sender</th><th>Status</th></tr></thead><tbody>${rows.slice(historyPage*20,historyPage*20+20).map(m => {
+    const check = CHECKS[m.recipient];
+    const label = `${labels[m.source] || "Unknown source"}${check ? ` · mailbox: ${check.verdict}` : " · no mailbox evidence"}`;
+    return `<tr><td>${esc(m.company)}</td><td><span class="quality-dot ${esc(m.source || "none")}" title="${esc(label)}" role="img" aria-label="${esc(label)}"></span>${esc(m.recipient)}</td><td>${esc(m.sender || m.planned_sender || "Assigned at start")}</td><td>${esc(m.status === "held" ? "Needs verification" : m.status)}${m.template ? ` · Template ${esc(m.template)}` : ""}${m.error ? `<br><span class="ph">${esc(m.error)}</span>` : ""}</td></tr>`;
+  }).join("")}</tbody></table><div class="acts" style="margin:10px"><button type="button" data-history-page="-1" ${historyPage ? "" : "disabled"}>Previous</button><span class="ph">${historyPage*20+1}–${Math.min(rows.length,historyPage*20+20)} of ${rows.length}</span><button type="button" data-history-page="1" ${historyPage*20+20 >= rows.length ? "disabled" : ""}>Next</button></div>` : '<p class="ph">No messages in this view.</p>';
+}
+$("historyTabs").onclick = e => { const tab = e.target.closest("[data-tab]"); if (tab) {historyTab = tab.dataset.tab; historyPage = 0; renderHistory();} };
+$("historySearch").oninput = () => {historyPage = 0; renderHistory();};
+$("mailHistory").onclick = e => {const page = e.target.closest("[data-history-page]"); if (page) {historyPage += Number(page.dataset.historyPage); renderHistory(); $("mailHistory").scrollTop = 0;} };
+function reviewRows() { return [...$("reviewList").querySelectorAll(".review-message")]; }
+function selectedSenderEmails() {
+  const byId = new Map((mailState?.accounts || []).map(a => [a.id, a.email]));
+  return [...document.querySelectorAll(".sender-choice:checked")].map(el => byId.get(el.value)).filter(Boolean);
+}
+function updateReviewRoutes() {
+  const senders = selectedSenderEmails();
+  let routeIndex = 0;
+  reviewRows().forEach(row => {
+    const from = row.querySelector(".review-from");
+    const included = row.querySelector(".choose-mail").checked;
+    from.textContent = !included ? "Not selected" : senders.length ? `Planned from ${senders[routeIndex++ % senders.length]}${row.dataset.rotation === "1" ? " · A/B rotation" : ""}` : "Select a sender to plan this message";
+  });
+}
+function reviewMail() {
+  if (tpl.rotate && (!tpl.subject_b.trim() || !tpl.body_b.trim())) return say("mailNextStep", "Write Template B's subject and body before reviewing rotating drafts.", true);
+  const existing = new Map(mailState.messages.filter(m => m.status !== "cancelled").map(m => [m.recipient, m.status]));
+  const blocked = new Set(mailState.suppressed);
+  let skipped = 0, suggestions = 0;
+  const seenRecipients = new Set();
+  const candidates = DATA.flatMap(c => {
+    const prior = mailState.messages.filter(m => m.company === c.name && ["pending","held","sending","sent","uncertain"].includes(m.status)).length;
+    const room = Math.max(0,3-prior);
+    return contacts(c).map(founder => ({c, founder, contact:best(founder), fallback:founder !== c.founders?.[0]}))
+      .filter(p => p.contact.email && !existing.has(p.contact.email.toLowerCase()) && !blocked.has(p.contact.email.toLowerCase())).slice(0,room);
+  }).sort((a,b) => RANK[a.contact.kind]-RANK[b.contact.kind]);
+  const cards = candidates.map(({ c, founder, contact, fallback }) => {
+    const recipient = contact.email || "";
+    if (!recipient || seenRecipients.has(recipient)) return "";
+    seenRecipients.add(recipient);
+    const duplicate = recipient && existing.has(recipient);
+    const isBlocked = recipient && blocked.has(recipient);
+    if (duplicate || isBlocked) { skipped++; return ""; }
+    const suggested = ["guess", "unknown"].includes(contact.kind);
+    if (suggested) suggestions++;
+    const label = contact.label || "enter address";
+    const invalid = contact.kind === "invalid";
+    const route = recipient ? `To ${esc(recipient)}` : "To: enter a confirmed address";
+    const fallbackNote = fallback ? " Additional company contact; receives a separate personalized message." : "";
+    const note = invalid ? "Previous address failed the format or mail-domain check" : suggested ? "Suggested address · may bounce" : recipient ? esc(label) : "No address found";
+    return `<details class="review-message" data-rotation="${tpl.rotate ? "1" : "0"}" data-company="${esc(c.name)}" data-recipient="${esc(recipient)}" data-source="${recipient ? contact.kind : "manual"}" data-suggestion="${suggested ? "1" : "0"}">
+      <summary>
+        <label class="review-pick"><input class="choose-mail" type="checkbox" ${recipient ? "checked" : "disabled"}><span><span class="name">${esc(c.name)}</span> · ${esc(founder.name)}<span class="review-destination">${route} <span class="badge ${esc(contact.kind || "none")}">${esc(label)}</span></span></span></label>
+        <span class="review-from"></span>
+      </summary>
+      <div class="body">
+        <p class="review-status ${suggested || invalid ? "warn" : ""}">${note}.${fallbackNote} ${contact.kind === "verified" ? "Mailbox verification passed. Review the finished draft." : "This draft will stay on hold until mailbox verification passes. You can verify after queuing it."}</p>
+        <label class="f">Recipient<input class="recipient-mail" type="email" value="${esc(recipient)}" required></label>
+        <label class="f" style="margin-top:10px">Subject<input class="subject-mail" required maxlength="200" value="${esc(fill(tpl.subject, c, founder))}"></label>
+        <label class="f" style="margin-top:10px">Body<textarea class="body-mail" required maxlength="20000">${esc(fill(tpl.body, c, founder))}</textarea></label>
+        ${tpl.rotate ? `<label class="f" style="margin-top:10px">Template B · Subject<input class="subject-mail-b" required maxlength="200" value="${esc(fill(tpl.subject_b, c, founder))}"></label><label class="f" style="margin-top:10px">Template B · Body<textarea class="body-mail-b" required maxlength="20000">${esc(fill(tpl.body_b, c, founder))}</textarea></label><p class="ph">Both drafts are saved. The actual sender chooses A or B using its next rotation slot.</p>` : ""}
+      </div>
+    </details>`;
+  }).filter(Boolean);
+  $("reviewList").innerHTML = cards.join("") || '<p class="ph">Every loaded recipient is already queued, sent, blocked, or missing an address.</p>';
+  $("includeSuggestionsLabel").hidden = !suggestions;
+  $("includeSuggestions").checked = true;
+  $("mailReview").hidden = false;
+  $("queueMail").hidden = false;
+  const preselected = reviewRows().filter(d => d.querySelector(".choose-mail")?.checked).length;
+  $("reviewRoute").textContent = `${preselected} separate message${preselected === 1 ? "" : "s"} preselected · up to 3 contacts/company · mailbox verification required${suggestions ? ` · ${suggestions} suggested` : ""}`;
+  updateMailControls();
+  $("mailReview").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+function updateMailControls() {
+  const selected = reviewRows().filter(d => d.querySelector(".choose-mail")?.checked);
+  const suggestions = selected.filter(d => d.dataset.suggestion === "1").length;
+  $("reviewCount").textContent = `${selected.length} selected${suggestions ? ` · ${suggestions} suggested` : ""}`;
+  $("queueMail").textContent = `Queue ${selected.length} email${selected.length === 1 ? "" : "s"}`;
+  $("queueMail").disabled = mailBusy || !selected.length;
+  updateReviewRoutes();
+  if (!mailState) return;
+  const pending = mailState.messages.filter(m => m.status === "pending").length;
+  const held = mailState.messages.filter(m => m.status === "held").length;
+  const accounts = [...document.querySelectorAll(".sender-choice:checked")].length;
+  $("dailyLimit").max = Math.max(50, accounts * 50);
+  const validSettings = $("dailyLimit").checkValidity() && $("sendInterval").checkValidity();
+  const ready = mailState.configured && mailState.paused && pending && accounts && validSettings;
+  $("startMail").disabled = mailBusy || !ready;
+  $("startMail").title = !pending ? "Add reviewed messages to the queue first" : !accounts ? "Select a ready sender account" : "Start sending queued messages";
+  let message;
+  if (!pending) {
+    message = held ? `${held} queued draft${held === 1 ? "" : "s"} need mailbox verification. Paste your Apify token above and click “Verify mailboxes”.`
+      : !$("mailReview").hidden
+      ? selected.length ? `${selected.length} message${selected.length === 1 ? "" : "s"} selected. Queue the drafts, verify their mailboxes, then start sending.` : "Select a recipient or add an address in an expanded card."
+      : "No emails queued yet. Click “Review loaded companies”, select messages, and add them to the queue.";
+  } else if (!accounts) message = "Select at least one ready sender account to start sending.";
+  else if (!validSettings) message = `Set a daily total from 1 to ${accounts * 50} for ${accounts} selected account${accounts === 1 ? "" : "s"}, and an interval from 1 to 60 minutes.`;
+  else message = mailState.paused ? `${pending} email${pending === 1 ? "" : "s"} queued. Click “Start sending” to begin.` : "Sending is active. You can close the browser while your Mac stays awake.";
+  say("mailNextStep", message, !!pending && !validSettings);
+}
+$("includeSuggestions").addEventListener("change", e => {
+  reviewRows().filter(d => d.dataset.suggestion === "1").forEach(d => d.querySelector(".choose-mail").checked = e.target.checked);
+  updateMailControls();
+});
+$("mailReview").addEventListener("input", e => {
+  if (!e.target.classList.contains("recipient-mail")) return;
+  const row = e.target.closest(".review-message"), recipient = e.target.value.trim();
+  row.querySelector(".review-destination").textContent = recipient ? `To ${recipient}` : "To: enter a confirmed address";
+  if (recipient && e.target.checkValidity()) row.querySelector(".choose-mail").checked = true;
+  updateMailControls();
+});
+$("mailReview").addEventListener("change", e => {
+  if (e.target.classList.contains("choose-mail") && e.target.closest(".review-message")?.dataset.suggestion === "1") {
+    const rows = reviewRows().filter(d => d.dataset.suggestion === "1");
+    $("includeSuggestions").checked = rows.every(d => d.querySelector(".choose-mail").checked);
+  }
+  updateMailControls();
+});
+$("senderAccounts").addEventListener("change", updateMailControls);
+["dailyLimit", "sendInterval"].forEach(id => $(id).addEventListener("input", updateMailControls));
+
+async function changeMail(payload) {
+  if (mailBusy) return;
+  mailBusy = true;
+  ["queueMail", "startMail", "pauseMail", "cancelMail", "blockMail"].forEach(id => $(id).disabled = true);
+  try {
+    const result = await mailRequest(payload);
+    if (payload.action === "enqueue") $("mailReview").hidden = true;
+    mailBusy = false;
+    await refreshMail();
+    if (payload.action === "enqueue") { historyTab="queue"; historyPage=0; renderHistory(); $("mailStatus").textContent += ` · Added ${result.added}; skipped ${result.skipped} duplicates, blocked addresses or company limits.`; }
+    if (["bounce","check_bounces"].includes(payload.action)) { historyTab="issues"; historyPage=0; renderHistory(); say("mailStatus", `Recorded ${result.bounced} hard bounce${result.bounced === 1 ? "" : "s"}${result.scan_errors?.length ? `; could not scan ${result.scan_errors.join(", ")}. Check Gmail IMAP/app-password settings.` : ""}`); }
+  } catch (e) {
+    mailBusy = false;
+    await refreshMail();
+    say("mailStatus", e.message, true);
+  } finally {
+    mailBusy = false;
+    updateMailControls();
+  }
+}
+$("reviewMail").onclick = reviewMail;
+$("queueMail").onclick = () => {
+  const selected = reviewRows().filter(d => d.querySelector(".choose-mail").checked);
+  for (const row of selected) {
+    for (const field of row.querySelectorAll(".recipient-mail, .subject-mail, .body-mail, .subject-mail-b, .body-mail-b")) {
+      if (!field.reportValidity()) return;
+    }
+  }
+  const messages = selected.map(d => {
+    const recipient = d.querySelector(".recipient-mail").value.trim().toLowerCase();
+    const source = recipient === d.dataset.recipient.toLowerCase() ? d.dataset.source : "manual";
+    return { company: d.dataset.company, recipient, source, allow_unverified: ["guess", "unknown"].includes(source),
+      subject: d.querySelector(".subject-mail").value, body: d.querySelector(".body-mail").value,
+      variants: d.dataset.rotation === "1" ? [
+        {subject:d.querySelector(".subject-mail").value,body:d.querySelector(".body-mail").value},
+        {subject:d.querySelector(".subject-mail-b").value,body:d.querySelector(".body-mail-b").value}
+      ] : [] };
+  });
+  if (!messages.length) return say("mailStatus", "Select at least one reviewed message.", true);
+  changeMail({ action: "enqueue", messages });
+};
+$("startMail").onclick = () => changeMail({ action: "start", daily_limit: Number($("dailyLimit").value), interval_minutes: Number($("sendInterval").value), senders: [...document.querySelectorAll(".sender-choice:checked")].map(el => el.value) });
+$("pauseMail").onclick = () => changeMail({ action: "pause" });
+$("cancelMail").onclick = () => changeMail({ action: "cancel" });
+$("blockMail").onclick = () => changeMail({ action: "suppress", email: $("blockEmail").value });
+$("bounceMail").onclick = () => changeMail({ action:"bounce", email:$("blockEmail").value });
+$("scanBounces").onclick = () => changeMail({ action:"check_bounces" });
+refreshMail();
+setInterval(() => { if (!mailBusy) refreshMail() }, 15000);
 
 $("list").addEventListener("toggle", e => { if (e.target.open) draft(e.target) }, true);
 $("list").addEventListener("click", e => {
@@ -300,7 +791,7 @@ $("list").addEventListener("click", e => {
 ["q", "st", "hideSent"].forEach(id => $(id).addEventListener(id === "q" ? "input" : "change", filter));
 $("all").onclick = e => {
   const open = e.target.textContent === "Expand all";
-  document.querySelectorAll("details").forEach(d => { if (d.style.display !== "none") d.open = open });
+  document.querySelectorAll("#list details").forEach(d => { if (d.style.display !== "none") d.open = open });
   e.target.textContent = open ? "Collapse all" : "Expand all";
 };
 document.querySelectorAll("[data-k]").forEach(el => {
@@ -308,8 +799,11 @@ document.querySelectorAll("[data-k]").forEach(el => {
   el.value = tpl[el.dataset.k];
   el.addEventListener("input", () => { tpl[el.dataset.k] = el.value; store.set(KEY, tpl); update(); });
 });
+$("rotateTemplates").checked = tpl.rotate;
+$("templateB").hidden = !tpl.rotate;
+$("rotateTemplates").onchange = e => {tpl.rotate=e.target.checked; $("templateB").hidden=!tpl.rotate; store.set(KEY,tpl);};
 let lastField = document.querySelector('textarea[data-k="body"]');
-document.querySelectorAll('input[data-k="subject"], textarea[data-k="body"]').forEach(el => el.addEventListener("focus", () => lastField = el));
+document.querySelectorAll('input[data-k="subject"], textarea[data-k="body"], input[data-k="subject_b"], textarea[data-k="body_b"]').forEach(el => el.addEventListener("focus", () => lastField = el));
 $("vars").addEventListener("click", e => {
   if (e.target.tagName !== "CODE") return;
   const el = lastField, s = el.selectionStart ?? el.value.length;
@@ -324,6 +818,10 @@ $("reset").onclick = () => {
 $("load").onclick = loadBatch;
 $("more").onclick = loadMore;
 $("enrich").onclick = enrich;
+$("checkDomains").onclick = checkDomains;
+$("testMailboxes").onclick = testMailboxes;
+$("reimportMailChecks").onclick = reimportMailChecks;
+$("discover").onclick = discoverContacts;
 $("batch").onchange = () => store.set(KEY + "-last", $("batch").value);
 
 api({ action: "batches" }).then(bs => {

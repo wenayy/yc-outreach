@@ -10,10 +10,9 @@ Optional verified lookup (Apify) runs in the browser, so visitors' tokens never 
 """
 import concurrent.futures as cf, html, json, re, socket, ssl, unicodedata, urllib.parse, urllib.request
 from http.server import BaseHTTPRequestHandler
+from contact_emails import extract_emails, founder_emails
 
 UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128 Safari/537.36"
-EMAIL_RE = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}")
-BAD_EMAIL = re.compile(r"\.(png|jpe?g|gif|svg|webp|css|js)$|sentry|wixpress|example\.|@2x|u00|domain\.com|email\.com", re.I)
 SLUG_RE = re.compile(r"^[a-z0-9-]{1,100}$")
 BATCH_RE = re.compile(r"^(Winter|Spring|Summer|Fall) \d{4}$|^[WSFX]\d{2}$|^IK12$|^Unspecified$")
 MAX_SLUGS = 10
@@ -85,15 +84,14 @@ def ascii_name(s):
 
 
 def site_emails(website, domain):
-    found = set()
-    for path in ("", "/contact"):  # ponytail: 2 pages, not the CLI's 6, to fit in a function timeout
-        body = get(website.rstrip("/") + path, timeout=3)
-        for e in EMAIL_RE.findall(urllib.parse.unquote(html.unescape(body or ""))):
-            e = e.lower().strip(".")
-            host = e.split("@")[1]
-            if not BAD_EMAIL.search(e) and (host == domain or host.endswith("." + domain)):
-                found.add(e)
-    return sorted(found)
+    if not domain:
+        return []
+    base = website if "://" in website else "https://" + website
+    # Four public pages in parallel, still bounded by SITE_DEADLINE in founders().
+    with cf.ThreadPoolExecutor(4) as ex:
+        bodies = ex.map(lambda path: get(base.rstrip("/") + path, timeout=3),
+                        ("", "/contact", "/team", "/about"))
+        return sorted({email for body in bodies for email in extract_emails(body, domain)})
 
 
 def guesses(full_name, domain):
@@ -128,10 +126,9 @@ def founders(slug):
     out = []
     for f in c.get("founders", []):
         name = f.get("full_name") or ""
-        first = (ascii_name(name) or [""])[0]
         out.append({"name": name, "title": f.get("title") or "", "linkedin": f.get("linkedin_url") or "",
                     "twitter": f.get("twitter_url") or "",
-                    "emails_found": [e for e in emails if first and e.split("@")[0].startswith(first)],
+                    "emails_found": [e for e in founder_emails(name, emails, [person.get("full_name") or "" for person in c.get("founders", [])])],
                     "email_guesses": guesses(name, domain) if dns else []})
     return {"slug": slug, "website": website, "domain": domain, "linkedin": c.get("linkedin_url") or "",
             "twitter": c.get("twitter_url") or "", "site_emails": emails, "founders": out}

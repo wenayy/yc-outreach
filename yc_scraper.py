@@ -10,10 +10,9 @@ flast@) for each founder, marked as guesses in `email_guesses`.
 """
 import argparse, concurrent.futures as cf, csv, html, json, re, socket, ssl, sys, time, unicodedata
 import urllib.parse, urllib.request
+from contact_emails import extract_emails, founder_emails
 
 UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128 Safari/537.36"
-EMAIL_RE = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}")
-BAD_EMAIL = re.compile(r"\.(png|jpe?g|gif|svg|webp|css|js)$|sentry|wixpress|example\.|@2x|u00|domain\.com|email\.com", re.I)
 CONTACT_PATHS = ["", "/contact", "/about", "/team", "/contact-us", "/about-us"]
 CTX = ssl.create_default_context()
 
@@ -71,19 +70,13 @@ def domain_of(website):
 def site_emails(website, domain):
     if not website:
         return []
-    base = website.rstrip("/")
+    base = (website if "://" in website else "https://" + website).rstrip("/")
     found = set()
     for path in CONTACT_PATHS:
         body = get(base + path, timeout=10)
         if not body:
             continue
-        body = urllib.parse.unquote(html.unescape(body))
-        for e in EMAIL_RE.findall(body):
-            e = e.lower().strip(".")
-            # Only keep emails on the company's own domain (drops form placeholders like you@company.com)
-            host = e.split("@")[1]
-            if not BAD_EMAIL.search(e) and (host == domain or host.endswith("." + domain)):
-                found.add(e)
+        found.update(extract_emails(body, domain))
     return sorted(found)
 
 
@@ -120,9 +113,8 @@ def process(hit):
     founders = []
     for f in c.get("founders", []):
         name = f.get("full_name", "")
-        first = (ascii_name(name) or [""])[0]
         # Emails from the site that look like this founder's
-        matched = [e for e in emails if first and e.split("@")[0].startswith(first)]
+        matched = [e for e in founder_emails(name, emails, [person.get("full_name") or "" for person in c.get("founders", [])])]
         founders.append({
             "name": name,
             "title": f.get("title"),

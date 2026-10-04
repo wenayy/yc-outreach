@@ -37,6 +37,7 @@ footer{color:var(--muted);font-size:13px;margin-top:32px}
 </style></head><body><main>
 <h1>YC Founder Outreach</h1>
 <p class="sub">Pick a YC batch, find founder emails, and write personalised cold emails using one or two templates. Draft for free, then review and schedule emails from your own mailbox.</p>
+<nav class="row2" aria-label="Contact source"><button id="sourceYC" class="primary" type="button">YC companies</button><button id="sourceImport" type="button">Import contacts</button></nav>
 
 <section class="panel">
   <h2>1. Your details</h2>
@@ -60,13 +61,22 @@ footer{color:var(--muted);font-size:13px;margin-top:32px}
   <p class="ph">Lines like <code>resume: {resume}</code> are dropped when you leave that field empty. <span class="badge verified">mailbox verified</span> means a recent SMTP and catch-all check passed. The older <span class="badge valid">checked</span> label only covers format/domain checks. <span class="badge site">on site</span> is published on the company's website; <span class="badge guess">guess</span> is a suggested pattern. Every queued recipient needs mailbox verification before sending.</p>
 </section>
 
-<section class="panel">
+<section class="panel" id="ycSource">
   <h2>3. Pick a YC batch</h2>
   <div class="row2">
     <select id="batch" aria-label="YC batch"><option value="">Loading batches…</option></select>
     <button id="load" class="primary" type="button" disabled>Load companies</button>
   </div>
   <p class="status" id="loadStatus"></p>
+</section>
+<section class="panel" id="importSource" hidden>
+  <h2>3. Import your contacts</h2>
+  <p class="ph">Upload CSV, TSV, or a JSON array of contacts. Excel and Google Sheets can export CSV. Files are read in your browser; loaded contacts are saved in this browser. Queued drafts are saved by your local server. Map your columns, preview the contacts, then load them into the same templates and queue. Importing never sends mail automatically.</p>
+  <label class="f">Contact file<input id="contactFile" type="file" accept=".csv,.tsv,.json,text/csv,text/tab-separated-values,application/json"></label>
+  <div id="importMapping" class="grid" hidden></div>
+  <p id="importStatus" class="status" role="status"></p>
+  <div id="importPreview" style="overflow:auto;max-height:260px"></div>
+  <button id="importLoad" class="primary" type="button" disabled>Load imported contacts</button>
 </section>
 
 <section class="panel">
@@ -227,7 +237,7 @@ function render() {
       <summary><span class="name">${esc(c.name)}</span><span class="badge ${b.kind || "none"}">${esc(b.label)}</span>
       <span class="meta">${esc(f?.name || "")}<br>${esc(c.batch)}</span></summary>
       <div class="body">
-        <p class="one">${esc(c.one_liner)}${url(c.website) ? ` · <a class="lnk" href="${url(c.website)}" target="_blank" rel="noopener">website</a>` : ""} · <a class="lnk" href="https://www.ycombinator.com/companies/${esc(c.slug)}" target="_blank" rel="noopener">YC</a>${url(f?.linkedin) ? ` · <a class="lnk" href="${url(f.linkedin)}" target="_blank" rel="noopener">LinkedIn</a>` : ""}${url(f?.twitter) ? ` · <a class="lnk" href="${url(f.twitter)}" target="_blank" rel="noopener">X</a>` : ""}</p>
+        <p class="one">${esc(c.one_liner)}${url(c.website) ? ` · <a class="lnk" href="${url(c.website)}" target="_blank" rel="noopener">website</a>` : ""}${c.slug ? ` · <a class="lnk" href="https://www.ycombinator.com/companies/${esc(c.slug)}" target="_blank" rel="noopener">YC</a>` : ""}${url(f?.linkedin) ? ` · <a class="lnk" href="${url(f.linkedin)}" target="_blank" rel="noopener">LinkedIn</a>` : ""}${url(f?.twitter) ? ` · <a class="lnk" href="${url(f.twitter)}" target="_blank" rel="noopener">X</a>` : ""}</p>
         ${c.error ? `<p class="status err">${esc(c.error)}</p>` : ""}
         ${fs.map(o => { const e = best(o); return `<div class="r"><b>${o === f ? "To" : "Also"}</b>${esc(o.name)}${o.title ? ` (${esc(o.title)})` : ""} · ${esc(e.email || "no email")} <span class="badge ${e.kind}">${e.label}</span></div>` }).join("")}
         <div class="r"><b>Subject</b><span class="subj"></span></div>
@@ -832,6 +842,75 @@ $("reset").onclick = () => {
   tpl.subject = DEFAULTS.subject; tpl.body = DEFAULTS.body; store.set(KEY, tpl);
   document.querySelector('[data-k="subject"]').value = tpl.subject; document.querySelector('[data-k="body"]').value = tpl.body; update();
 };
+let importRows = [], importColumns = [], sourceMode = "yc";
+const importFields = {email:"Email (required)",company:"Company",name:"Contact name",website:"Website",title:"Job title",description:"Company description"};
+function parseContactFile(text, filename) {
+  text = text.replace(/^\uFEFF/, "");
+  if (/\.json$/i.test(filename)) {
+    const rows = JSON.parse(text);
+    if (!Array.isArray(rows) || rows.some(r => !r || typeof r !== "object" || Array.isArray(r))) throw Error("JSON must contain an array of contact objects.");
+    return rows;
+  }
+  const delimiter = /\.tsv$/i.test(filename) ? "\t" : ",";
+  const rows = []; let row = [], cell = "", quoted = false;
+  for (let i=0;i<text.length;i++) {
+    const c=text[i];
+    if (c==='"') { if (quoted && text[i+1]==='"') {cell+='"';i++;} else if (quoted || !cell) quoted=!quoted; else throw Error("Unexpected quote in the file."); }
+    else if (!quoted && c===delimiter) {row.push(cell);cell="";}
+    else if (!quoted && (c==='\n'||c==='\r')) { if(c==='\r'&&text[i+1]==='\n')i++; row.push(cell);if(row.some(v=>v.trim()))rows.push(row);row=[];cell=""; }
+    else cell+=c;
+  }
+  if(quoted)throw Error("A quoted cell is missing its closing quote.");
+  row.push(cell);if(row.some(v=>v.trim()))rows.push(row);
+  const headers=(rows.shift()||[]).map(v=>v.trim());
+  if(!headers.length||headers.some(v=>!v)||new Set(headers).size!==headers.length)throw Error("Use a header row with unique, non-empty column names.");
+  return rows.map((r,i)=>{if(r.length!==headers.length)throw Error(`Row ${i+2} has a different number of columns.`);return Object.fromEntries(headers.map((h,j)=>[h,r[j]]));});
+}
+function importedContacts() {
+  const mapping=Object.fromEntries(Object.keys(importFields).map(k=>[k,$("map-"+k).value]));
+  if(!mapping.email) return {companies:[],valid:0,invalid:importRows.length,duplicates:0};
+  const grouped=new Map(),seen=new Set();let valid=0,invalid=0,duplicates=0;
+  for(const row of importRows) {
+    const value=k=>String(row[mapping[k]]??"").trim();
+    const email=value("email").toLowerCase();
+    if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||email.length>254){invalid++;continue;}
+    if(seen.has(email)){duplicates++;continue;}seen.add(email);
+    const domain=email.split("@")[1],company=value("company")||domain,key=company.toLowerCase();
+    let website=value("website");if(website&&!/^https?:\/\//i.test(website))website="https://"+website;
+    try {if(website&&!/^https?:$/.test(new URL(website).protocol))website="";}catch{website="";}
+    if(!grouped.has(key))grouped.set(key,{name:company,domain,website,one_liner:value("description"),batch:"Imported",founders:[]});
+    grouped.get(key).founders.push({name:value("name")||email.split("@")[0],title:value("title")||"Contact",contact_candidates:[email],discovery_source:"file import"});valid++;
+  }
+  return {companies:[...grouped.values()],valid,invalid,duplicates};
+}
+function previewImport() {
+  const result=importedContacts();
+  say("importStatus",`${result.valid} unique addresses · ${result.companies.length} companies · ${result.invalid} invalid rows skipped · ${result.duplicates} duplicates skipped. Review offers up to three contacts per company.`);
+  $("importLoad").disabled=!result.valid||lookupBusy;
+  $("importPreview").innerHTML='<table><thead><tr><th>Company</th><th>Name</th><th>Email</th></tr></thead><tbody>'+result.companies.flatMap(c=>c.founders.map(f=>`<tr><td>${esc(c.name)}</td><td>${esc(f.name)}</td><td>${esc(f.contact_candidates[0])}</td></tr>`)).slice(0,10).join("")+'</tbody></table>';
+}
+function selectSource(mode) {
+  if(lookupBusy)return;
+  if(sourceMode!==mode){save();sourceMode=mode;batch=mode==="import"?"Imported":$("batch").value;ALL=mode==="import"?store.get(`${KEY}-batch-v3-Imported`,[]):store.get(`${KEY}-batch-v3-${batch}`,[]);DATA=ALL.filter(c=>c.founders||c.error);$("mailReview").hidden=true;render();busy(false);}
+  $("ycSource").hidden=mode!=="yc";$("importSource").hidden=mode!=="import";
+  $("sourceYC").classList.toggle("primary",mode==="yc");$("sourceImport").classList.toggle("primary",mode==="import");$("more").hidden=mode==="import"||ALL.length===DATA.length;
+}
+$("sourceYC").onclick=()=>selectSource("yc");$("sourceImport").onclick=()=>selectSource("import");
+$("contactFile").onchange=async e=>{
+  importRows=[];$("importLoad").disabled=true;$("importMapping").hidden=true;$("importPreview").innerHTML="";
+  try {
+    const file=e.target.files[0];if(!file)return;if(file.size>5*1024*1024)throw Error("Choose a file smaller than 5 MB.");
+    if(!/\.(csv|tsv|json)$/i.test(file.name))throw Error("Choose CSV, TSV, or JSON. Export Excel files as CSV first.");
+    importRows=parseContactFile(await file.text(),file.name);
+    if(!importRows.length||importRows.length>10000)throw Error("Use a file with 1–10,000 contact rows.");
+    importColumns=[...new Set(importRows.flatMap(r=>Object.keys(r)))];
+    const aliases={email:["email","emailaddress","workemail","businessemail"],company:["company","companyname","organization"],name:["name","fullname","contactname"],website:["website","companywebsite","url"],title:["title","jobtitle","role"],description:["description","oneliner","companydescription"]};
+    $("importMapping").innerHTML=Object.entries(importFields).map(([k,label])=>{const match=importColumns.find(h=>aliases[k].includes(h.toLowerCase().replace(/[^a-z]/g,"")));return `<label class="f">${label}<select id="map-${k}"><option value="">${k==="email"?"Choose email column":"Not provided"}</option>${importColumns.map(h=>`<option value="${esc(h)}" ${h===match?"selected":""}>${esc(h)}</option>`).join("")}</select></label>`;}).join("");
+    $("importMapping").hidden=false;$("importMapping").querySelectorAll("select").forEach(el=>el.onchange=previewImport);previewImport();
+  }catch(err){importRows=[];say("importStatus",err.message,true);}
+};
+$("importLoad").onclick=()=>{if(lookupBusy)return;const result=importedContacts();if(!result.valid)return;batch="Imported";ALL=result.companies;DATA=ALL;save();$("mailReview").hidden=true;render();busy(false);$("more").hidden=true;say("importStatus",`Loaded ${result.valid} contacts. Use your templates, verify mailboxes, then review and queue.`);};
+
 $("load").onclick = loadBatch;
 $("more").onclick = loadMore;
 $("enrich").onclick = enrich;

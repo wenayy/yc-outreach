@@ -60,8 +60,8 @@ main.explorer-view{max-width:1240px}.explorer-panel{padding:24px;margin-top:20px
     <label class="f">Industry<select id="explorerIndustry"><option value="">All industries</option></select></label>
     <label class="f">Status<select id="explorerFilterStatus"><option value="">All statuses</option></select></label>
   </div>
-  <div class="explorer-filter-flags"><label class="chk"><input id="explorerHiring" type="checkbox">Hiring only</label><label class="chk"><input id="explorerNewOnly" type="checkbox">New this refresh</label><span class="ph">A refresh may find zero new companies.</span></div>
-  <div class="explorer-toolbar"><div><p id="explorerCount" class="ph"></p><button id="explorerSelect" type="button">Select filtered</button><button id="explorerDeselect" type="button">Clear selection</button></div><button id="explorerExport" type="button">Download filtered CSV</button></div>
+  <div class="explorer-filter-flags"><label class="chk"><input id="explorerHiring" type="checkbox">Hiring only</label><label class="chk"><input id="explorerNewOnly" type="checkbox">New this refresh</label><label class="f">Outreach<select id="explorerOutreachFilter"><option value="">All outreach stages</option><option value="fresh">Not contacted or queued</option><option value="sent">Already sent / marked sent</option><option value="queued">Queued, not yet sent</option><option value="issues">Needs attention</option></select></label><span class="ph">A refresh may find zero new companies.</span></div>
+  <div class="explorer-toolbar"><div><p id="explorerCount" class="ph"></p><button id="explorerSelect" type="button">Select filtered</button><button id="explorerSelectFresh" type="button">Select uncontacted</button><button id="explorerDeselect" type="button">Clear selection</button></div><button id="explorerExport" type="button">Download filtered CSV</button></div>
   <div id="explorerTable"></div>
   <div class="explorer-pagination"><button id="explorerPrev" type="button">Previous</button><span id="explorerPage"></span><button id="explorerNext" type="button">Next</button></div>
   <div class="explorer-selection"><div><strong id="explorerSelectionCount">No companies selected</strong><p class="ph">Fetching contacts does not verify mailboxes or send emails.</p></div><div class="row2"><button id="explorerEnrich" type="button">2. Fetch contacts</button><button id="explorerSend" type="button" class="primary">3. Prepare outreach →</button></div></div>
@@ -124,6 +124,12 @@ main.explorer-view{max-width:1240px}.explorer-panel{padding:24px;margin-top:20px
     <button id="reimportMailChecks" type="button">Refresh saved results</button>
   </div>
   <p class="ph">New lookups skip already sent companies and recipients. Mailbox verification also checks waiting drafts, excluding completed recipients. Leads Finder searches up to 33 company domains with a maximum of 100 leads per run, capped by the budget above. We keep up to three contacts per company. Newly found contacts are drafts until you review and queue them.</p>
+  <details id="freeDiscovery"><summary>Free Apify plan? Find contacts through Apify’s UI</summary>
+    <p class="ph">This Leads Finder restricts free accounts to searches started in Apify’s UI. Download the input for your loaded, unsent companies, paste it in the actor’s JSON input, and run there (up to 100 leads). Export the output as JSON, then import it here. Your Apify credits still apply; this app does not start a paid run in this workflow.</p>
+    <div class="row2"><button id="prepareDiscovery" type="button">Download search input</button><a href="https://console.apify.com/actors/IoSHqwTR9YGhzccez/input" target="_blank" rel="noopener">Open Leads Finder in Apify</a></div>
+    <label class="f">Import contact results from Apify (JSON)<input id="discoveryFile" type="file" accept=".json,application/json"></label>
+    <p class="ph">Only named contacts matching your loaded companies’ domains are added. Already contacted or blocked addresses and duplicates are skipped. Up to three contacts per company; verify mailboxes, then review and queue.</p>
+  </details>
   <p class="status" id="discoverStatus"></p>
   <p class="ph">Check domains screens address format and mail-domain records with the original validator. “Checked (domain)” does not confirm that the person's mailbox exists; Verify mailboxes is still required for automatic sending.</p>
   <p class="status" id="domainStatus"></p>
@@ -321,11 +327,16 @@ async function loadBatch() {
   busy(true);
   ALL = store.get(`${KEY}-batch-v3-${batch}`, null) || [];
   try {
-    if (!ALL.length) {
-      say("loadStatus", "Loading companies…");
-      ALL = (await api({ action: "companies", batch })).sort((a, b) => b.launched_at - a.launched_at);
-      save();
-    }
+    say("loadStatus", "Loading companies from YC and the saved scraper catalog…");
+    const cached = new Map(ALL.map(c => [c.slug,c]));
+    const latest = await api({ action: "companies", batch });
+    ALL = latest.map(c => {
+      const previous = cached.get(c.slug);
+      const merged = {...c,...previous,name:c.name,batch:c.batch||batch,website:c.website||previous?.website||""};
+      if(merged.snapshot_stale){delete merged.founders;delete merged.error;}
+      return merged;
+    });
+    save();
   } catch (e) {
     busy(false);
     return say("loadStatus", `Couldn't load this batch: ${e.message}`, true);
@@ -542,21 +553,15 @@ async function enrich() {
   finally { busy(false); updateMailControls(); }
 }
 
-async function discoverContacts() {
-  const token = $("token").value.trim(), cap = Math.max(0.1, +$("cap").value || 1);
-  if (!token) return say("discoverStatus", "Paste your Apify token first.", true);
-  if (!await syncLookupHistory("discoverStatus")) return;
+function discoveryCompanies(){
   const excluded = lookupExclusions();
-  const companies = DATA.filter(c => !excluded.companies.has(companyKey(c.name)) && contacts(c).filter(f => best(f).email).length < 3 && (!c.leads_discovery_attempted || Date.now()-c.leads_discovery_attempted > 86400000)).map(c => {
+  return DATA.filter(c => !excluded.companies.has(companyKey(c.name)) && contacts(c).filter(f => best(f).email).length < 3 && (!c.leads_discovery_attempted || Date.now()-c.leads_discovery_attempted > 86400000)).map(c => {
     try { return {c, domain:(c.domain || new URL(c.website).hostname).replace(/^www\./, "").toLowerCase()}; } catch { return null; }
   }).filter(Boolean).slice(0,33);
-  const resume = store.get(KEY + "-run-" + DISCOVERY_ACTOR, null);
-  if (!companies.length && !resume) return say("discoverStatus", "Loaded companies are already sent, were searched today, or already have three contacts. Load fresh companies or retry tomorrow.");
-  if (!confirm(resume ? "Resume the existing contact-discovery run?" : `Find named contacts at ${companies.map(p => p.c.name).join(", ")}? One Apify run capped at $${cap}. Results still need mailbox verification and your review.`)) return;
-  busy(true);
-  try {
-    const {items, key} = await actorRun(DISCOVERY_ACTOR, {company_domain:companies.map(p => p.domain), contact_job_title:["Founder", "Co-Founder", "CEO", "CTO", "Head of Engineering", "Engineering Manager", "Recruiter", "Head of Talent"], email_status:["validated"], fetch_count:100, file_name:"YC outreach company contacts"}, token, cap, "discoverStatus");
-    let added = 0, matched = 0;
+}
+function discoveryInput(companies){return {company_domain:companies.map(p=>p.domain),contact_job_title:["Founder","Co-Founder","CEO","CTO","Head of Engineering","Engineering Manager","Recruiter","Head of Talent"],email_status:["validated"],fetch_count:100,file_name:"YC outreach company contacts"};}
+function applyDiscoveryResults(items, companies){
+  let added = 0, matched = 0;
     for (const item of items.slice(0,100)) {
       let domain;
       try { domain = new URL("https://" + String(item.company_domain || item.company_website || "").replace(/^https?:\/\//, "")).hostname.toLowerCase().replace(/^www\./, ""); } catch { continue; }
@@ -574,13 +579,50 @@ async function discoverContacts() {
         if (existing) existing.contact_candidates = [...new Set([...(existing.contact_candidates || []), address])];
         else { if (contacts(c).filter(f => best(f).email).length >= 3) continue; (c.extra_contacts ||= []).push({name, title, contact_candidates:[address], discovery_source:"code_crafter/leads-finder"}); }
         added++;
+        c.leads_discovery_attempted = Date.now();
       }
-      c.leads_discovery_attempted = Date.now();
     }
-    if (matched) companies.forEach(p => p.c.leads_discovery_attempted = Date.now());
+
+  return {added, matched};
+}
+$("prepareDiscovery").onclick=async()=>{
+  if(lookupBusy||!await syncLookupHistory("discoverStatus"))return;
+  const companies=discoveryCompanies();
+  if(!companies.length)return say("discoverStatus","No fresh loaded companies need more contacts. Load fresh companies first.");
+  const link=document.createElement("a"),blob=new Blob([JSON.stringify(discoveryInput(companies),null,2)],{type:"application/json"});
+  link.href=URL.createObjectURL(blob);link.download="company-contact-search.json";link.click();setTimeout(()=>URL.revokeObjectURL(link.href),1000);
+  say("discoverStatus",`Prepared ${companies.length} company domains. Paste this file’s JSON into Leads Finder’s Input → JSON in Apify, run there, then export Output as JSON and import below. No run was started by this app.`);
+};
+$("discoveryFile").onchange=async()=>{
+  const file=$("discoveryFile").files[0];if(!file||lookupBusy)return;
+  if(file.size>5*1024*1024)return say("discoverStatus","Choose a JSON export smaller than 5 MB.",true);
+  if(!await syncLookupHistory("discoverStatus"))return;
+  busy(true);
+  try{
+    const items=JSON.parse(await file.text());if(!Array.isArray(items))throw new Error("Export Apify’s Output as a JSON array of contact rows.");
+    if(items.length>100)throw new Error("Import up to 100 leads per run. Export at most 100 rows.");
+    if(items.some(item=>!item||typeof item!=="object"||Array.isArray(item)))throw new Error("The JSON must contain contact objects.");
+    const companies=DATA.map(c=>{try{return {c,domain:(c.domain||new URL(c.website).hostname).replace(/^www\./,"").toLowerCase()};}catch{return null;}}).filter(Boolean);
+    const {added,matched}=applyDiscoveryResults(items,companies);save();render();
+    say("discoverStatus",matched?`Imported ${added} additional company addresses as unverified drafts. Verify mailboxes, then review and queue. Nothing was sent.`:"No eligible contacts matched the loaded companies. Check the export has company_domain, full_name (or first_name/last_name), and email.",!matched);
+  }catch(e){say("discoverStatus",e.message,true);}finally{busy(false);$("discoveryFile").value="";}
+};
+async function discoverContacts() {
+  const token = $("token").value.trim(), cap = Math.max(0.1, +$("cap").value || 1);
+  if (!token) return say("discoverStatus", "Paste your Apify token first.", true);
+  if (!await syncLookupHistory("discoverStatus")) return;
+  const companies = discoveryCompanies();
+  const resume = store.get(KEY + "-run-" + DISCOVERY_ACTOR, null);
+  if (!companies.length && !resume) return say("discoverStatus", "Loaded companies are already sent, were searched today, or already have three contacts. Load fresh companies or retry tomorrow.");
+  if (!confirm(resume ? "Resume the existing contact-discovery run?" : `Find named contacts at ${companies.map(p => p.c.name).join(", ")}? One Apify run capped at $${cap}. Results still need mailbox verification and your review.`)) return;
+  busy(true);
+  try {
+    const {items, key} = await actorRun(DISCOVERY_ACTOR, discoveryInput(companies), token, cap, "discoverStatus");
+    const {added, matched} = applyDiscoveryResults(items, companies);
     save(); render(); store.set(key, null);
-    say("discoverStatus", matched ? `Found ${added} additional named company addresses. Verify mailboxes, then review up to three recipients per company.` : "No company rows matched. Check the Apify run for quota, plan or provider errors; no contacts were invented.", !matched);
+    say("discoverStatus", matched ? `Found ${added} additional named company addresses. Verify mailboxes, then review up to three recipients per company.` : "No company contacts were returned. If Apify shows a free-plan/UI-only restriction, open the free-plan workflow below: run in Apify’s UI and import the JSON output here.", !matched);
   } catch (e) {
+    $("freeDiscovery").open=true;
     const savedRun = store.get(KEY + "-run-" + DISCOVERY_ACTOR, null);
     say("discoverStatus", `${e.message}. ${savedRun ? "Click again to resume the saved run." : "No resumable run was saved. Retry after correcting the input or provider issue."}`, true);
   }
@@ -627,7 +669,7 @@ async function refreshMail() {
     });
     filter();
     const outreachSignature=JSON.stringify(mailState.messages.map(m=>[m.company,m.status]));
-    if(outreachSignature!==explorerHistorySignature){explorerHistorySignature=outreachSignature;if(sourceMode==="explorer")renderExplorer();}
+    if(outreachSignature!==explorerHistorySignature){explorerHistorySignature=outreachSignature;if(sourceMode==="explorer"){renderExplorer();if($("explorerDetail").open){const selected=explorerData.find(c=>c.slug===$("explorerDetail").dataset.slug);if(selected){const card=$("explorerDetailBody").querySelector("section.explorer-profile-card");if(card)card.outerHTML=explorerHistoryPanel(selected);}}}}
     const next = new Date(Math.max(Date.now(), mailState.next_send * 1000)).toLocaleString();
     say("mailStatus", mailState.configured
       ? `${mailState.paused ? "Paused" : "Sending active"} · ${pending} ready · ${held} awaiting verification · ${completed.length} attempted successfully at sender · limit ${mailState.daily_limit}/24h${!mailState.paused && pending ? ` · next batch no earlier than ${next}` : ""}`
@@ -955,19 +997,35 @@ let explorerData=store.get(KEY+"-explorer",[]), explorerSelected=new Set(),explo
 const explorerDB = new Promise((resolve,reject)=>{const request=indexedDB.open(KEY+"-company-catalog",1);request.onupgradeneeded=()=>request.result.createObjectStore("catalog");request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error);});
 const explorerSave=()=>{const snapshot=structuredClone(explorerData);explorerDB.then(db=>{const tx=db.transaction("catalog","readwrite");tx.objectStore("catalog").put(snapshot,"companies");tx.onerror=()=>say("explorerStatus","Could not save explorer data in this browser. Export CSV before closing.",true);}).catch(()=>say("explorerStatus","Browser storage is unavailable. Export CSV before closing.",true));};
 const explorerReady=explorerDB.then(db=>new Promise(resolve=>{const request=db.transaction("catalog").objectStore("catalog").get("companies");request.onsuccess=()=>{if(request.result&&!explorerData.length){explorerData=request.result;explorerOptions();renderExplorer();}resolve();};request.onerror=()=>resolve();})).catch(()=>{});
-function explorerFiltered(){const query=$("explorerSearch").value.trim().toLowerCase();return explorerData.filter(c=>(!query||[c.name,c.one_liner,c.location,c.description,...(c.tags||[])].join(" ").toLowerCase().includes(query))&&(!$("explorerIndustry").value||c.industry===$("explorerIndustry").value)&&(!$("explorerFilterStatus").value||c.status===$("explorerFilterStatus").value)&&(!$("explorerBatchFilter").value||c.batch===$("explorerBatchFilter").value)&&(!$("explorerNewOnly").checked||explorerNew.has(c.slug))&&(!$("explorerHiring").checked||c.is_hiring)).sort((a,b)=>(Number(explorerNew.has(b.slug))-Number(explorerNew.has(a.slug)))||((b.launched_at||0)-(a.launched_at||0)));}
+function explorerFiltered(){const query=$("explorerSearch").value.trim().toLowerCase();return explorerData.filter(c=>(!query||[c.name,c.one_liner,c.location,c.description,...(c.tags||[])].join(" ").toLowerCase().includes(query))&&(!$("explorerIndustry").value||c.industry===$("explorerIndustry").value)&&(!$("explorerFilterStatus").value||c.status===$("explorerFilterStatus").value)&&(!$("explorerBatchFilter").value||c.batch===$("explorerBatchFilter").value)&&(!$("explorerNewOnly").checked||explorerNew.has(c.slug))&&(!$("explorerOutreachFilter").value||explorerStage(c)===$("explorerOutreachFilter").value)&&(!$("explorerHiring").checked||c.is_hiring)).sort((a,b)=>(Number(explorerNew.has(b.slug))-Number(explorerNew.has(a.slug)))||((b.launched_at||0)-(a.launched_at||0)));}
 function explorerOptions(){for(const [id,key,label] of [["explorerIndustry","industry","All industries"],["explorerFilterStatus","status","All statuses"],["explorerBatchFilter","batch","All batches"]]){const value=$(id).value;$(id).innerHTML=`<option value="">${label}</option>`+[...new Set(explorerData.map(c=>c[key]).filter(Boolean))].sort().map(v=>`<option value="${esc(v)}">${esc(v)}</option>`).join("");$(id).value=value;}}
 let explorerGrid=null,explorerGridReady=false,explorerGridRows=[];
 let explorerHistorySignature="";
+function explorerHistory(c){return (mailState?.messages||[]).filter(m=>companyKey(m.company)===companyKey(c.name));}
+function explorerStage(c){
+  if(!mailState?.available)return 'unknown';
+  const rows=explorerHistory(c);
+  if(rows.some(m=>m.status==='sent'))return 'sent';
+  if(rows.some(m=>['bounced','failed','uncertain','invalid'].includes(m.status)))return 'issues';
+  if(rows.some(m=>['pending','held','sending'].includes(m.status)))return 'queued';
+  if([...sent].some(n=>companyKey(n)===companyKey(c.name)))return 'sent';
+  return 'fresh';
+}
+function explorerHistoryPanel(c){
+  const rows=explorerHistory(c).sort((a,b)=>(b.sent||b.attempted||b.created||0)-(a.sent||a.attempted||a.created||0));
+  const labels={sent:'Sent · accepted by sender',pending:'Queued',held:'Awaiting verification',sending:'Sending',bounced:'Bounced · do not resend',uncertain:'Outcome unknown · check mailbox',invalid:'Invalid · excluded',failed:'Send failed',cancelled:'Cancelled'};
+  return `<section class="explorer-profile-card"><h3>Your outreach to this company</h3>${explorerOutreachBadges(c)}<p class="ph">Sent means your mailbox accepted the message. It does not confirm delivery, reading or a reply.</p>${!mailState?.available?'<p class="status err">Sending history is unavailable. Reconnect to the local server before assuming this company is new.</p>':!rows.length?`<p class="ph">${explorerStage(c)==='sent'?'Manually marked sent; no recipient-level history is saved.':'No queued or sent messages found for this company.'}</p>`:rows.map(m=>{const timestamp=m.sent||m.attempted||m.created;return `<div class="explorer-address"><strong>${esc(m.recipient)}</strong><div class="explorer-mini-badges"><span class="explorer-badge ${m.status==='sent'?'contacted':['bounced','invalid','failed'].includes(m.status)?'invalid':'guessed'}">${esc(labels[m.status]||m.status)}</span></div><p class="ph">${esc(m.sender||'Sender assigned when sending')}${timestamp?` · ${esc(new Date(timestamp*1000).toLocaleString())}`:''}${m.template?` · Template ${esc(m.template)}`:''}</p>${m.error?`<p class="ph">${esc(m.error)}</p>`:''}</div>`;}).join('')}</section>`;
+}
+
 function explorerOutreachBadges(c){
-  const history=(mailState?.messages||[]).filter(m=>companyKey(m.company)===companyKey(c.name));
+  const history=explorerHistory(c);
   const count=states=>history.filter(m=>states.includes(m.status)).length;
-  const delivered=count(["sent"]),bounced=count(["bounced"]),queued=count(["pending","held","sending"]),uncertain=count(["uncertain"]);
-  return `<div class="explorer-mini-badges">${delivered?`<span class="explorer-badge contacted" title="${delivered} messages accepted by your sender. Other contacts at this company may still be unsent.">Already sent · ${delivered}</span>`:""}${bounced?`<span class="explorer-badge invalid">Bounced · ${bounced}</span>`:""}${queued?`<span class="explorer-badge guessed">In queue · ${queued}</span>`:""}${uncertain?'<span class="explorer-badge guessed">Send outcome unknown</span>':""}${!history.length&&[...sent].some(name=>companyKey(name)===companyKey(c.name))?'<span class="explorer-badge contacted">Marked sent</span>':""}</div>`;
+  const delivered=count(["sent"]),bounced=count(["bounced"]),queued=count(["pending","held","sending"]),uncertain=count(["uncertain"]),failed=count(["failed","invalid"]);
+  return `<div class="explorer-mini-badges">${!mailState?.available?'<span class="explorer-badge muted">History unavailable</span>':explorerStage(c)==='fresh'?'<span class="explorer-badge muted">Not contacted</span>':""}${delivered?`<span class="explorer-badge contacted" title="${delivered} messages accepted by your sender. Other contacts at this company may still be unsent.">Already sent · ${delivered}</span>`:""}${bounced?`<span class="explorer-badge invalid">Bounced · ${bounced}</span>`:""}${queued?`<span class="explorer-badge guessed">In queue · ${queued}</span>`:""}${failed?`<span class="explorer-badge invalid">Needs attention · ${failed}</span>`:""}${uncertain?'<span class="explorer-badge guessed">Send outcome unknown</span>':""}${!history.length&&[...sent].some(name=>companyKey(name)===companyKey(c.name))?'<span class="explorer-badge contacted">Marked sent</span>':""}</div>`;
 }
 function explorerLink(value,label){let target=String(value||"");if(target&&!/^https?:\/\//i.test(target))target="https://"+target;return url(target)?`<a href="${url(target)}" target="_blank" rel="noopener">${esc(label)}</a>`:"";}
-function explorerEmailBadges(c){const named=new Set((c.founders||[]).flatMap(f=>f.emails_found||[]));const general=(c.site_emails||[]).filter(e=>!named.has(e));const guessed=(c.founders||[]).filter(f=>(f.email_guesses||[]).length&&!f.emails_found?.length).length;return `${c.profile_error?'<span class="explorer-badge muted">Fetch failed</span>':!c.founders?'<span class="explorer-badge muted">Not fetched</span>':`<span class="explorer-badge muted">${c.founders.length} founders</span>`}<div class="explorer-mini-badges">${named.size?`<span class="explorer-badge published">${named.size} founder emails</span>`:""}${general.length?`<span class="explorer-badge published">${general.length} general emails</span>`:""}${guessed?'<span class="explorer-badge guessed">Guesses available</span>':""}${c.snapshot_stale?'<span class="explorer-badge muted">Older snapshot</span>':""}</div>`;}
-function openExplorerDetail(c){$("explorerDetailTitle").textContent=c.name;const addresses=(emails,label)=>`<div class="explorer-address-label">${label}</div>${emails.length?emails.map(e=>`<div class="explorer-address">${esc(e)}</div>`).join(""):'<p class="ph">None found</p>'}`;$("explorerDetailBody").innerHTML=`${explorerOutreachBadges(c)}<div class="explorer-mini-badges"><span class="explorer-badge muted">${esc(c.batch||"Batch unknown")}</span>${c.status?`<span class="explorer-badge muted">${esc(c.status)}</span>`:""}${c.snapshot_stale?'<span class="explorer-badge guessed">Older snapshot · refresh recommended</span>':""}</div><p>${esc(c.description||c.one_liner||"No description available.")}</p><p class="ph">${esc([c.industry,c.location].filter(Boolean).join(" · "))}</p><div class="explorer-profile-links">${explorerLink(c.website,"Website")}${explorerLink(c.linkedin,"Company LinkedIn")}${explorerLink(c.twitter,"X")}${explorerLink('https://www.ycombinator.com/companies/'+c.slug,"YC profile")}</div><h3>Founder contacts</h3><p class="ph">Published means found on the company website. Guesses are generated from names and domains; neither confirms a mailbox.</p>${c.profile_error?`<p class="status err">${esc(c.profile_error)}</p>`:""}${!c.founders?'<p class="ph">Select this company and click “Fetch contacts” to load its founders.</p>':c.founders.map(f=>`<article class="explorer-profile-card"><h3>${esc(f.name)}</h3><p class="ph">${esc(f.title||"Founder")}</p><div class="explorer-profile-links">${explorerLink(f.linkedin,"LinkedIn")}${explorerLink(f.twitter,"X")}</div>${addresses(f.emails_found||[],"Published founder emails")}${(f.email_guesses||[]).length?`<details><summary><span class="explorer-badge guessed">Unverified guesses</span> Show ${f.email_guesses.length} patterns</summary><div class="body">${addresses(f.email_guesses,"Generated addresses · may not exist")}</div></details>`:""}</article>`).join("")||'<p class="ph">No founders returned by YC.</p>'}<h3>Company website emails</h3><p class="ph">Addresses such as hello@ and info@ are general inboxes, not identified founder mailboxes.</p>${addresses(c.site_emails||[],"All published website addresses")}`;$("explorerDetail").showModal();}
+function explorerEmailBadges(c){const named=new Set((c.founders||[]).flatMap(f=>f.emails_found||[]));const general=(c.site_emails||[]).filter(e=>!named.has(e));const guessed=(c.founders||[]).filter(f=>(f.email_guesses||[]).length&&!f.emails_found?.length).length;return `${c.profile_error?'<span class="explorer-badge muted">Fetch failed</span>':!c.founders?'<span class="explorer-badge muted">Not fetched</span>':`<span class="explorer-badge muted">${c.founders.length} founders</span>`}<div class="explorer-mini-badges">${c.profile_updated_at?`<span class="explorer-badge contacted" title="Fetched ${esc(new Date(c.profile_updated_at*1000).toLocaleString())}">Fetched ✓</span>`:""}${named.size?`<span class="explorer-badge published">${named.size} founder emails</span>`:""}${general.length?`<span class="explorer-badge published">${general.length} general emails</span>`:""}${guessed?'<span class="explorer-badge guessed">Guesses available</span>':""}${c.snapshot_stale?'<span class="explorer-badge muted">Older snapshot</span>':""}</div>`;}
+function openExplorerDetail(c){$("explorerDetail").dataset.slug=c.slug;$("explorerDetailTitle").textContent=c.name;const addresses=(emails,label)=>`<div class="explorer-address-label">${label}</div>${emails.length?emails.map(e=>`<div class="explorer-address">${esc(e)}</div>`).join(""):'<p class="ph">None found</p>'}`;$("explorerDetailBody").innerHTML=`${explorerHistoryPanel(c)}<div class="explorer-mini-badges"><span class="explorer-badge muted">${esc(c.batch||"Batch unknown")}</span>${c.status?`<span class="explorer-badge muted">${esc(c.status)}</span>`:""}${c.snapshot_stale?'<span class="explorer-badge guessed">Older snapshot · refresh recommended</span>':""}</div><p>${esc(c.description||c.one_liner||"No description available.")}</p><p class="ph">${esc([c.industry,c.location].filter(Boolean).join(" · "))}</p><div class="explorer-profile-links">${explorerLink(c.website,"Website")}${explorerLink(c.linkedin,"Company LinkedIn")}${explorerLink(c.twitter,"X")}${explorerLink('https://www.ycombinator.com/companies/'+c.slug,"YC profile")}</div><h3>Founder contacts</h3><p class="ph">Published means found on the company website. Guesses are generated from names and domains; neither confirms a mailbox.</p>${c.profile_error?`<p class="status err">${esc(c.profile_error)}</p>`:""}${!c.founders?'<p class="ph">Select this company and click “Fetch contacts” to load its founders.</p>':c.founders.map(f=>`<article class="explorer-profile-card"><h3>${esc(f.name)}</h3><p class="ph">${esc(f.title||"Founder")}</p><div class="explorer-profile-links">${explorerLink(f.linkedin,"LinkedIn")}${explorerLink(f.twitter,"X")}</div>${addresses(f.emails_found||[],"Published founder emails")}${(f.email_guesses||[]).length?`<details><summary><span class="explorer-badge guessed">Unverified guesses</span> Show ${f.email_guesses.length} patterns</summary><div class="body">${addresses(f.email_guesses,"Generated addresses · may not exist")}</div></details>`:""}</article>`).join("")||'<p class="ph">No founders returned by YC.</p>'}<h3>Company website emails</h3><p class="ph">Addresses such as hello@ and info@ are general inboxes, not identified founder mailboxes.</p>${addresses(c.site_emails||[],"All published website addresses")}`;$("explorerDetail").showModal();}
 $("explorerDetailClose").onclick=()=>$("explorerDetail").close();
 $("explorerDetail").onclick=e=>{if(e.target===$("explorerDetail")){const r=e.target.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)e.target.close();}};
 function renderExplorer(){const rows=explorerFiltered(),pages=Math.max(1,Math.ceil(rows.length/25));explorerPage=Math.max(0,Math.min(explorerPage,pages-1));$("explorerCount").textContent=`${rows.length} of ${explorerData.length} companies · ${explorerSelected.size} selected`;$("explorerSelectionCount").textContent=explorerSelected.size?`${explorerSelected.size} ${explorerSelected.size===1?"company":"companies"} selected`:"No companies selected";$("explorerSource").setAttribute("aria-busy",String(explorerBusy||catalogJob?.running));
@@ -975,11 +1033,12 @@ function renderExplorer(){const rows=explorerFiltered(),pages=Math.max(1,Math.ce
   if(!$("explorerSource").hidden){
     if(!explorerGrid){explorerGrid=new Tabulator("#explorerTable",{height:460,layout:"fitColumns",index:"slug",placeholder:"No matching companies. Change your filters or refresh YC.",data:explorerGridRows,columnDefaults:{headerSort:false,vertAlign:"middle"},columns:[
       {title:"",width:44,formatter:cell=>{const c=cell.getRow().getData(),input=document.createElement("input");input.type="checkbox";input.checked=explorerSelected.has(c.slug);input.setAttribute("aria-label",`Select ${c.name}`);input.dataset.explorer=c.slug;input.onchange=()=>{input.checked?explorerSelected.add(c.slug):explorerSelected.delete(c.slug);renderExplorer();};return input;}},
-      {title:"Company",field:"name",minWidth:230,widthGrow:3,formatter:cell=>{const c=cell.getRow().getData();return `<div><span class="explorer-table-title">${esc(c.name)}</span>${explorerOutreachBadges(c)}${explorerNew.has(c.slug)?'<span class="explorer-badge published">New this refresh</span>':""}<span class="explorer-table-subtitle">${esc(c.one_liner)}</span><span class="explorer-table-subtitle">${esc(c.location||"Location not listed")}</span></div>`;}},
+      {title:"Company",field:"name",minWidth:200,widthGrow:3,formatter:cell=>{const c=cell.getRow().getData();return `<div><span class="explorer-table-title">${esc(c.name)}</span>${explorerNew.has(c.slug)?'<span class="explorer-badge published">New this refresh</span>':""}<span class="explorer-table-subtitle">${esc(c.one_liner)}</span><span class="explorer-table-subtitle">${esc(c.location||"Location not listed")}</span></div>`;}},
       {title:"Batch",field:"batch",width:110,formatter:cell=>esc(cell.getValue()||"Unknown")},
-      {title:"Industry",field:"industry",minWidth:150,widthGrow:2,formatter:cell=>`<span class="explorer-table-subtitle">${esc(cell.getValue()||"Not listed")}</span>`},
+      {title:"Industry",field:"industry",minWidth:130,widthGrow:2,formatter:cell=>`<span class="explorer-table-subtitle">${esc(cell.getValue()||"Not listed")}</span>`},
       {title:"Status",field:"status",width:95,formatter:cell=>`<span class="explorer-badge muted">${esc(cell.getValue()||"Unknown")}</span>${cell.getRow().getData().is_hiring?'<div class="explorer-mini-badges"><span class="explorer-badge published">Hiring</span></div>':""}`},
-      {title:"Contacts",minWidth:180,widthGrow:2,formatter:cell=>`<div>${explorerEmailBadges(cell.getRow().getData())}</div>`},
+      {title:"Outreach",minWidth:150,widthGrow:1,formatter:cell=>`<div>${explorerOutreachBadges(cell.getRow().getData())}</div>`},
+      {title:"Contacts",minWidth:155,widthGrow:2,formatter:cell=>`<div>${explorerEmailBadges(cell.getRow().getData())}</div>`},
       {title:"Profile",width:85,formatter:()=>'<button type="button">View</button>',cellClick:(_e,cell)=>openExplorerDetail(cell.getRow().getData())}
     ]});explorerGrid.on("tableBuilt",()=>{explorerGridReady=true;explorerGrid.replaceData(explorerGridRows);});}
     else if(explorerGridReady)explorerGrid.replaceData(explorerGridRows);
@@ -1003,7 +1062,7 @@ function showCatalogJob(){if(!catalogJob)return;const job=catalogJob;$("sourceEx
   else if(job.error)say('explorerStatus',`Refresh stopped: ${job.error}. Saved companies are retained; click Refresh YC now to retry.`,true);
   else if(job.run_id)say('explorerStatus',`Synced ${job.completed-job.failed.length} batches · ${job.new_slugs.length} new companies · ${job.failed.length} batches failed. Companies saved on your local server. Select companies to fetch profiles and website emails.`,!!job.failed.length);
 }
-async function pollCatalogJob(){if(catalogPollBusy)return;catalogPollBusy=true;try{catalogJob=await catalogRequest();if(!catalogJob.running&&catalogJob.run_id&&catalogAppliedRun!==catalogJob.run_id&&!catalogJob.error){const rows=await api({action:'catalog'});mergeExplorerRows(rows);explorerNew=new Set(catalogJob.new_slugs);catalogAppliedRun=catalogJob.run_id;}renderExplorer();showCatalogJob();if(!catalogJob.running&&catalogPollTimer){clearInterval(catalogPollTimer);catalogPollTimer=null;}}catch(e){say('explorerStatus',`Could not read background progress: ${e.message}. The server job may still be running.`,true);}finally{catalogPollBusy=false;}}
+async function pollCatalogJob(){if(catalogPollBusy)return;catalogPollBusy=true;try{catalogJob=await catalogRequest();if(!catalogJob.running&&catalogJob.run_id&&catalogAppliedRun!==catalogJob.run_id&&!catalogJob.error){const rows=await api({action:'catalog'});mergeExplorerRows(rows);explorerNew=new Set(catalogJob.new_slugs);catalogAppliedRun=catalogJob.run_id;await refreshBatchOptions();}renderExplorer();showCatalogJob();if(!catalogJob.running&&catalogPollTimer){clearInterval(catalogPollTimer);catalogPollTimer=null;}}catch(e){say('explorerStatus',`Could not read background progress: ${e.message}. The server job may still be running.`,true);}finally{catalogPollBusy=false;}}
 async function startCatalogRefresh(){try{await pollCatalogJob();if(!catalogJob?.running){catalogJob=await catalogRequest({action:'refresh'});explorerNew.clear();}renderExplorer();showCatalogJob();if(catalogJob.running&&!catalogPollTimer)catalogPollTimer=setInterval(pollCatalogJob,2500);if(!catalogJob.running)await pollCatalogJob();}catch(e){say('explorerStatus',`Background refresh requires the local server: ${e.message}`,true);}}
 $("explorerSync").onclick=startCatalogRefresh;
 
@@ -1023,8 +1082,8 @@ $("explorerExport").onclick=()=>{const rows=explorerFiltered();if(!rows.length)r
 $("explorerSend").onclick=async()=>{if(explorerBusy||lookupBusy)return;const selected=explorerData.filter(c=>explorerSelected.has(c.slug));if(!selected.length)return;selectSource("yc");batch="Explorer selection";ALL=structuredClone(selected);ALL.filter(c=>c.snapshot_stale).forEach(c=>delete c.founders);DATA=ALL.filter(c=>c.founders);save();render();progress();busy(false);if(DATA.length<ALL.length)await loadMore();say("loadStatus",`${ALL.length} selected explorer companies loaded for outreach.`);$("outreachHandoff").hidden=false;$("outreachHandoffText").textContent=`${ALL.length} companies selected · ${DATA.length} profiles loaded · ${DATA.flatMap(c=>contacts(c)).filter(f=>best(f).email).length} recipient addresses available.${DATA.length<ALL.length?" Use Load more below to fetch the remaining profiles.":""} Nothing has been queued or sent by this action.`;$("outreachHandoff").scrollIntoView({behavior:"smooth",block:"start"});};
 $("handoffVerify").onclick=()=>{$("enrichStatus").closest("section").scrollIntoView({behavior:"smooth",block:"start"});$("token").focus({preventScroll:true});};
 $("handoffReview").onclick=()=>{if(!mailState?.available)return say("loadStatus","Start the local server before reviewing drafts.",true);reviewMail();};
-$("explorerSelect").onclick=()=>{explorerFiltered().forEach(c=>explorerSelected.add(c.slug));renderExplorer();};$("explorerDeselect").onclick=()=>{explorerSelected.clear();renderExplorer();};
-for(const id of ['explorerSearch','explorerIndustry','explorerFilterStatus','explorerHiring','explorerBatchFilter','explorerNewOnly'])$(id).oninput=()=>{explorerPage=0;renderExplorer();};$("explorerPrev").onclick=()=>{explorerPage--;renderExplorer();};$("explorerNext").onclick=()=>{explorerPage++;renderExplorer();};
+$("explorerSelect").onclick=()=>{explorerFiltered().forEach(c=>explorerSelected.add(c.slug));renderExplorer();};$("explorerSelectFresh").onclick=()=>{explorerSelected=new Set(explorerFiltered().filter(c=>explorerStage(c)==="fresh").map(c=>c.slug));renderExplorer();};$("explorerDeselect").onclick=()=>{explorerSelected.clear();renderExplorer();};
+for(const id of ['explorerSearch','explorerIndustry','explorerFilterStatus','explorerHiring','explorerBatchFilter','explorerNewOnly','explorerOutreachFilter'])$(id).oninput=()=>{explorerPage=0;renderExplorer();};$("explorerPrev").onclick=()=>{explorerPage--;renderExplorer();};$("explorerNext").onclick=()=>{explorerPage++;renderExplorer();};
 
 $("load").onclick = loadBatch;
 $("more").onclick = loadMore;
@@ -1035,11 +1094,12 @@ $("reimportMailChecks").onclick = reimportMailChecks;
 $("discover").onclick = discoverContacts;
 $("batch").onchange = () => store.set(KEY + "-last", $("batch").value);
 
-api({ action: "batches" }).then(bs => {
-  const last = store.get(KEY + "-last", "");
-  $("batch").innerHTML = bs.filter(b => b.batch !== "Unspecified")
-    .map(b => `<option value="${esc(b.batch)}" ${b.batch === last ? "selected" : ""}>${esc(b.batch)} (${b.count} companies)</option>`).join("");
+async function refreshBatchOptions(){
+  const bs = await api({ action: "batches" });
+  const last = $("batch").value || store.get(KEY + "-last", "");
+  $("batch").innerHTML = bs.map(b => `<option value="${esc(b.batch)}" ${b.batch === last ? "selected" : ""}>${esc(b.batch === "Unspecified" ? "Saved scraper companies · batch unknown" : b.batch)} (${b.count} companies)</option>`).join("");
   $("explorerBatch").innerHTML = $("batch").innerHTML;
-  $("load").disabled = false;
-}).catch(e => { $("batch").innerHTML = "<option value=''>Couldn't load batches</option>"; say("loadStatus", e.message, true) });
+  $("load").disabled = lookupBusy;
+}
+refreshBatchOptions().catch(e => { $("batch").innerHTML = "<option value=''>Couldn't load batches</option>"; say("loadStatus", e.message, true) });
 </script></body></html>

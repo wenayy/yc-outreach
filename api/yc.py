@@ -149,12 +149,31 @@ def route(query):
             return 404, {"error": "Saved company dataset is unavailable."}, 0
         return 200, json.loads(catalog.read_text()), 0
     if action == "batches":
-        return 200, batches(), 86400
+        saved = json.loads(CATALOG_PATH.read_text()) if CATALOG_PATH.exists() else []
+        counts = {}
+        for company in saved:
+            batch = company.get("batch") or "Unspecified"
+            counts[batch] = counts.get(batch, 0) + 1
+        try:
+            for entry in batches():
+                counts[entry["batch"]] = max(counts.get(entry["batch"], 0), entry["count"])
+        except Exception:
+            if not saved:
+                raise
+        return 200, [{"batch": b, "count": n} for b, n in sorted(counts.items(), key=lambda x: batch_key(x[0]), reverse=True)], 0
     if action == "companies":
         batch = (q.get("batch") or [""])[0]
         if not BATCH_RE.match(batch):
             return 400, {"error": "Invalid batch"}, 0
-        return 200, companies(batch), 3600
+        saved = json.loads(CATALOG_PATH.read_text()) if CATALOG_PATH.exists() else []
+        rows = {c["slug"]: c for c in saved if (c.get("batch") or "Unspecified") == batch}
+        try:
+            for company in companies(batch):
+                rows[company["slug"]] = {**rows.get(company["slug"], {}), **company}
+        except Exception:
+            if not rows:
+                raise
+        return 200, list(rows.values()), 0
     if action == "founders":
         slugs = [s for s in (q.get("slugs") or [""])[0].split(",") if s]
         if not slugs or len(slugs) > MAX_SLUGS or not all(SLUG_RE.match(s) for s in slugs):

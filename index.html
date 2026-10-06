@@ -153,6 +153,24 @@ main.explorer-view{max-width:1240px}.explorer-panel{padding:24px;margin-top:20px
   <p class="ph">Each selected account sends one different email in a shared batch every two minutes: up to three messages, then a two-minute pause. If a mailbox sent recently, the next batch waits until it is ready. Review opens compact routes so you can see the recipient and planned sender without scrolling through every draft.</p>
   <p class="ph">Messages are marked sent automatically only after the sending mailbox accepts them. The same recipient cannot be queued twice. Inbox placement cannot be guaranteed; personal, relevant messages and accurate addresses help, while guessed addresses may bounce.</p>
   <div id="senderAccounts" class="grid" style="margin-top:12px"></div>
+  <fieldset style="margin:16px 0;border:1px solid var(--line);border-radius:10px;padding:16px">
+    <legend>Optional recipient time zone scheduling</legend>
+    <p class="ph">Send anytime with Start sending, or enable a local sending window below. Both modes follow your batch interval and daily limits.</p>
+    <label class="chk"><input id="scheduleEnabled" type="checkbox">Use recipient time zone scheduling · switch saves immediately</label>
+    <div class="row2" style="margin-top:12px">
+      <label class="f">From (recipient time)<input id="scheduleStart" type="time" value="09:00" required></label>
+      <label class="f">Until (recipient time)<input id="scheduleEnd" type="time" value="11:00" required></label>
+      <label class="f">Earliest start (your local time)<input id="scheduleAfter" type="datetime-local"></label>
+      <label class="f">Fallback time zone<input id="scheduleFallback" list="timeZones" value="UTC" required></label>
+      <label class="chk"><input id="scheduleWeekdays" type="checkbox" checked>Monday–Friday only</label>
+      <label class="chk"><input id="scheduleSuggest" type="checkbox" checked>Suggest zones for existing queue from loaded company locations</label>
+      <button id="saveSchedule" type="button">Save window changes</button>
+      <button id="disableSchedule" type="button">Turn off scheduling · send anytime</button>
+    </div>
+    <p class="ph">Time zones suggested from company location may differ from the person’s location. Edit them in draft review or in the queue. Unknown locations use the fallback zone. Saving a schedule does not start sending.</p>
+    <p id="scheduleStatus" class="status" role="status"></p>
+  </fieldset>
+  <datalist id="timeZones"></datalist>
   <div class="row2" style="margin-top:12px">
     <button id="reviewMail" type="button" disabled>Review loaded companies</button>
     <label class="f">Daily total across senders (rolling 24 hours)<input id="dailyLimit" type="number" value="1000" min="1" max="1000"></label>
@@ -722,7 +740,7 @@ $("reviewPublicContacts").onclick=async()=>{
 };
 queueMicrotask(showPublicResults);
 
-let mailState = null, mailBusy = false, senderSignature = "";
+let mailState = null, mailBusy = false, scheduleSaving = false, senderSignature = "";
 async function mailRequest(payload) {
   const r = await fetch("/api/mail", payload ? {
     method: "POST", headers: { "Content-Type": "application/json", "X-Outreach-Token": mailState?.token || "" },
@@ -765,7 +783,7 @@ async function refreshMail() {
     if(outreachSignature!==explorerHistorySignature){explorerHistorySignature=outreachSignature;if(sourceMode==="explorer"){renderExplorer();if($("explorerDetail").open){const selected=explorerData.find(c=>c.slug===$("explorerDetail").dataset.slug);if(selected){const card=$("explorerDetailBody").querySelector("section.explorer-profile-card");if(card)card.outerHTML=explorerHistoryPanel(selected);}}}}
     const next = new Date(Math.max(Date.now(), mailState.next_send * 1000)).toLocaleString();
     say("mailStatus", mailState.configured
-      ? `${mailState.paused ? "Paused" : "Sending active"} · ${pending} ready · ${held} awaiting verification · ${completed.length} attempted successfully at sender · limit ${mailState.daily_limit}/24h${!mailState.paused && pending ? ` · next batch no earlier than ${next}` : ""}`
+      ? `${mailState.paused ? "Paused" : "Sending active"} · ${pending} ${mailState.schedule?.enabled?"queued":"ready"} · ${held} awaiting verification · ${completed.length} attempted successfully at sender · limit ${mailState.daily_limit}/24h${!mailState.paused && pending ? ` · next batch no earlier than ${next}` : ""}`
       : "Mailboxes need app passwords. Add a separate SMTP password for each account in .env, then restart the server or background service. You can review and queue drafts now.");
     $("reviewMail").disabled = !DATA.length;
     updateMailControls();
@@ -773,6 +791,7 @@ async function refreshMail() {
     $("cancelMail").disabled = mailBusy || (!pending && !held);
     $("blockMail").disabled = mailBusy;
     renderHistory();
+    renderScheduleSettings();
     showPublicResults();
     if (!lookupBusy) busy(false);
   } catch (e) {
@@ -783,6 +802,7 @@ async function refreshMail() {
   }
 }
 function renderHistory() {
+  if(document.activeElement?.dataset.zoneFor)return;
   const messages = mailState?.messages || [];
   const groups = {queue:["pending","sending","held"],sent:["sent"],issues:["bounced","invalid","failed","uncertain"],all:null};
   const titles = {queue:"Queue",sent:"Sent",issues:"Bounced / failed",all:"All"};
@@ -798,12 +818,75 @@ function renderHistory() {
     const hold = {"catch-all":["Held · catch-all", "Domain accepts arbitrary addresses; this mailbox is not confirmed."], risky:["Held · risky", "Verifier flagged this address as risky."], unknown:["Held · inconclusive", "Verification could not confirm this mailbox."]}[check?.verdict];
     const status = m.status === "held" ? (hold?.[0] || "Needs verification") : m.status === "pending" && check?.verdict === "catch-all" ? "Ready · catch-all allowed" : m.status;
     const explanation = m.status === "held" && hold ? hold[1] : m.error;
-    return `<tr><td>${esc(m.company)}</td><td><span class="quality-dot ${esc(m.source || "none")}" title="${esc(label)}" role="img" aria-label="${esc(label)}"></span>${esc(m.recipient)}</td><td>${esc(m.sender || m.planned_sender || "Assigned at start")}</td><td>${esc(status)}${m.template ? ` · Template ${esc(m.template)}` : ""}${explanation ? `<br><span class="ph">${esc(explanation)}</span>` : ""}</td></tr>`;
+    return `<tr><td>${esc(m.company)}</td><td><span class="quality-dot ${esc(m.source || "none")}" title="${esc(label)}" role="img" aria-label="${esc(label)}"></span>${esc(m.recipient)}</td><td>${esc(m.sender || m.planned_sender || "Assigned at start")}</td><td>${esc(status)}${m.template ? ` · Template ${esc(m.template)}` : ""}${explanation ? `<br><span class="ph">${esc(explanation)}</span>` : ""}${scheduleDescription(m)}</td></tr>`;
   }).join("")}</tbody></table><div class="acts" style="margin:10px"><button type="button" data-history-page="-1" ${historyPage ? "" : "disabled"}>Previous</button><span class="ph">${historyPage*20+1}–${Math.min(rows.length,historyPage*20+20)} of ${rows.length}</span><button type="button" data-history-page="1" ${historyPage*20+20 >= rows.length ? "disabled" : ""}>Next</button></div>` : '<p class="ph">No messages in this view.</p>';
 }
 $("historyTabs").onclick = e => { const tab = e.target.closest("[data-tab]"); if (tab) {historyTab = tab.dataset.tab; historyPage = 0; renderHistory();} };
 $("historySearch").oninput = () => {historyPage = 0; renderHistory();};
-$("mailHistory").onclick = e => {const page = e.target.closest("[data-history-page]"); if (page) {historyPage += Number(page.dataset.historyPage); renderHistory(); $("mailHistory").scrollTop = 0;} };
+$("mailHistory").onclick = async e => {
+  const zone=e.target.closest('[data-save-zone]');
+  if(zone){const input=[...$("mailHistory").querySelectorAll('[data-zone-for]')].find(el=>el.dataset.zoneFor===zone.dataset.saveZone);try{await mailRequest({action:'recipient_timezone',recipient:zone.dataset.saveZone,recipient_timezone:input.value.trim()});await refreshMail();}catch(error){say('scheduleStatus',error.message,true);}return;}
+  const page = e.target.closest("[data-history-page]"); if (page) {historyPage += Number(page.dataset.historyPage); renderHistory(); $("mailHistory").scrollTop = 0;} };
+function suggestedTimeZone(location) {
+  const value=String(location||"").toLowerCase();
+  if(value.includes("remote")&&value.split(';').length>1)return "";
+  const places=[[/san francisco|san jose|los angeles|seattle|palo alto|mountain view|san diego|oakland/,"America/Los_Angeles"],[/new york|boston|miami|atlanta|philadelphia|washington/,"America/New_York"],[/chicago|austin|dallas|houston/,"America/Chicago"],[/denver/,"America/Denver"],[/london|united kingdom/,"Europe/London"],[/berlin|germany/,"Europe/Berlin"],[/paris|france/,"Europe/Paris"],[/amsterdam|netherlands/,"Europe/Amsterdam"],[/bangalore|bengaluru|delhi|mumbai|hyderabad|india/,"Asia/Kolkata"],[/singapore/,"Asia/Singapore"],[/tokyo|japan/,"Asia/Tokyo"],[/sydney|melbourne/,"Australia/Sydney"],[/toronto/,"America/Toronto"],[/vancouver/,"America/Vancouver"],[/dubai/,"Asia/Dubai"]];
+  return places.find(([pattern])=>pattern.test(value))?.[1]||"";
+}
+function localDateInput(timestamp){if(!timestamp)return "";const date=new Date(timestamp*1000);return new Date(date.getTime()-date.getTimezoneOffset()*60000).toISOString().slice(0,16);}
+function updateScheduleControls(){
+  const unavailable=scheduleSaving||mailBusy||!mailState?.available;
+  $("scheduleEnabled").disabled=unavailable;
+  for(const id of ['scheduleStart','scheduleEnd','scheduleAfter','scheduleFallback','scheduleWeekdays','scheduleSuggest','saveSchedule'])$(id).disabled=unavailable||!$("scheduleEnabled").checked;
+  $("disableSchedule").disabled=unavailable||!mailState?.schedule?.enabled;
+  $("disableSchedule").textContent=mailState?.schedule?.enabled?'Turn off scheduling · send anytime':'Scheduling off · send anytime';
+}
+function renderScheduleSettings(){
+  const schedule=mailState?.schedule||{enabled:false,start:'09:00',end:'11:00',weekdays_only:true,not_before:0,fallback_timezone:'UTC'};
+  if(!document.querySelector('#scheduleEnabled').dataset.loaded){
+    $("scheduleEnabled").checked=schedule.enabled;$("scheduleStart").value=schedule.start;$("scheduleEnd").value=schedule.end;$("scheduleWeekdays").checked=schedule.weekdays_only;$("scheduleAfter").value=localDateInput(schedule.not_before);$("scheduleFallback").value=schedule.fallback_timezone;$("scheduleEnabled").dataset.loaded='1';
+  }
+  updateScheduleControls();
+  if(scheduleSaving)return;
+  say('scheduleStatus',schedule.enabled?`Scheduling ON: ${schedule.start}–${schedule.end} in each recipient’s time zone · ${schedule.weekdays_only?'Monday–Friday':'every day'} · fallback ${schedule.fallback_timezone}${schedule.not_before?' · starts no earlier than '+new Date(schedule.not_before*1000).toLocaleString():''}. ${mailState?.paused?'Sending is paused.':'Sending is active.'}`:'Scheduling OFF: Start sending now uses only your batch interval and daily limits. No time zone, date or weekday restrictions.');
+}
+$("timeZones").innerHTML=[...new Set(['UTC','Asia/Kolkata','America/Los_Angeles','America/New_York','Europe/London',...(Intl.supportedValuesOf?.('timeZone')||[])])].map(zone=>`<option value="${esc(zone)}"></option>`).join('');
+async function persistSchedule(schedule,suggestions=[]){
+  if(scheduleSaving||!mailState?.available)return;
+  scheduleSaving=true;updateScheduleControls();updateMailControls();
+  say('scheduleStatus',schedule.enabled?'Saving schedule…':'Turning off scheduling…');
+  let error='';
+  try{
+    const saved=await mailRequest({action:'set_schedule',schedule,suggested_timezones:suggestions});
+    mailState.schedule=saved.schedule||schedule;
+    delete $("scheduleEnabled").dataset.loaded;await refreshMail();
+  }catch(e){error=e.message;$("scheduleEnabled").checked=!!mailState?.schedule?.enabled;}
+  finally{scheduleSaving=false;renderScheduleSettings();updateMailControls();if(error)say('scheduleStatus',`Could not change scheduling: ${error}`,true);}
+}
+$("disableSchedule").onclick=()=>persistSchedule({...mailState.schedule,enabled:false});
+$("scheduleEnabled").onchange=()=>{
+  updateScheduleControls();
+  if($("scheduleEnabled").checked)$("saveSchedule").onclick();
+  else persistSchedule({...mailState.schedule,enabled:false});
+};
+$("saveSchedule").onclick=async()=>{
+  const invalid=message=>{$("scheduleEnabled").checked=!!mailState?.schedule?.enabled;updateScheduleControls();say('scheduleStatus',message,true);};
+  const fields=['scheduleStart','scheduleEnd','scheduleFallback'];if(fields.some(id=>!$(id).reportValidity()))return invalid('Complete the sending window and fallback time zone before enabling scheduling.');
+  if($("scheduleStart").value>=$("scheduleEnd").value)return invalid('Choose an end time after the start time on the same day.');
+  const after=$("scheduleAfter").value?new Date($("scheduleAfter").value).getTime()/1000:0;
+  if(!Number.isFinite(after))return invalid('Choose a valid earliest start date.');
+  try{
+    const companies=new Map([...ALL,...DATA,...explorerData].map(c=>[companyKey(c.name),c]));
+    const suggestions=$("scheduleSuggest").checked?(mailState.messages||[]).filter(m=>['pending','held'].includes(m.status)&&!m.recipient_timezone).map(m=>({recipient:m.recipient,recipient_timezone:suggestedTimeZone(companies.get(companyKey(m.company))?.location)})).filter(item=>item.recipient_timezone).slice(0,1000):[];
+    await persistSchedule({enabled:$("scheduleEnabled").checked,start:$("scheduleStart").value,end:$("scheduleEnd").value,weekdays_only:$("scheduleWeekdays").checked,not_before:after,fallback_timezone:$("scheduleFallback").value.trim()},suggestions);
+  }catch(e){say('scheduleStatus',e.message,true);}
+};
+function scheduleDescription(message){
+  if(!mailState?.schedule?.enabled||!['pending','held'].includes(message.status))return '';
+  const zone=message.effective_timezone||mailState.schedule.fallback_timezone;
+  let text=message.status==='held'?'Awaiting verification':message.scheduled_for?'No earlier than '+new Date(message.scheduled_for*1000).toLocaleString([], {timeZone:zone})+' recipient time · '+new Date(message.scheduled_for*1000).toLocaleString()+' your time':'Waiting for sending window';
+  return `<p class="ph">${esc(text)}<br>${esc(zone)} · ${esc(message.timezone_source||'fallback')}${mailState.paused?' · sending paused':''}</p><label class="f">Recipient time zone<input data-zone-for="${esc(message.recipient)}" list="timeZones" value="${esc(message.recipient_timezone||'')}" placeholder="Fallback: ${esc(mailState.schedule.fallback_timezone)}"></label><button type="button" data-save-zone="${esc(message.recipient)}">Save time zone</button>`;
+}
 function reviewRows() { return [...$("reviewList").querySelectorAll(".review-message")]; }
 function selectedSenderEmails() {
   const byId = new Map((mailState?.accounts || []).map(a => [a.id, a.email]));
@@ -852,6 +935,7 @@ function reviewMail(onlyEmails = null) {
       </summary>
       <div class="body">
         <p class="review-status ${suggested || invalid ? "warn" : ""}">${note}.${fallbackNote} ${contact.kind === "verified" ? "Mailbox verification passed. Review the finished draft." : "This draft will stay on hold until mailbox verification passes. You can verify after queuing it."}</p>
+        <label class="f">Recipient time zone<input class="recipient-zone" list="timeZones" value="${esc(suggestedTimeZone(c.location))}" data-suggested="${esc(suggestedTimeZone(c.location))}" placeholder="Fallback zone when blank"></label><p class="ph">${suggestedTimeZone(c.location)?'Suggested from company location; confirm the person’s zone.':'Location unknown; uses your scheduling fallback zone.'}</p>
         <label class="f">Recipient<input class="recipient-mail" type="email" value="${esc(recipient)}" required></label>
         <label class="f" style="margin-top:10px">Subject<input class="subject-mail" required maxlength="200" value="${esc(fill(tpl.subject, c, founder))}"></label>
         <label class="f" style="margin-top:10px">Body<textarea class="body-mail" required maxlength="20000">${esc(fill(tpl.body, c, founder))}</textarea></label>
@@ -883,7 +967,8 @@ function updateMailControls() {
   $("dailyLimit").max = 1000;
   const validSettings = $("dailyLimit").checkValidity() && $("sendInterval").checkValidity();
   const ready = mailState.configured && mailState.paused && pending && accounts && validSettings;
-  $("startMail").disabled = mailBusy || !ready;
+  $("startMail").disabled = mailBusy || scheduleSaving || !ready;
+  $("startMail").textContent = mailState.schedule?.enabled ? 'Start scheduled sending' : 'Start sending now';
   $("startMail").title = !pending ? "No mailbox-verified messages are ready to send" : !accounts ? "Select a ready sender account" : "Start sending queued messages";
   let message;
   if (!pending) {
@@ -897,7 +982,7 @@ function updateMailControls() {
     }
   } else if (!accounts) message = "Select at least one ready sender account to start sending.";
   else if (!validSettings) message = "Set a daily total from 1 to 1000 across selected accounts, and an interval from 1 to 60 minutes.";
-  else message = mailState.paused ? `${pending} email${pending === 1 ? "" : "s"} queued. Click “Start sending” to begin.` : "Sending is active. You can close the browser while your Mac stays awake.";
+  else message = mailState.paused ? `${pending} email${pending === 1 ? "" : "s"} queued. Click “Start sending” to begin${mailState.schedule?.enabled?" within the saved recipient-local windows":""}.` : "Sending is active. You can close the browser while your Mac stays awake.";
   say("mailNextStep", message, !!pending && !validSettings);
 }
 $("includeSuggestions").addEventListener("change", e => {
@@ -963,7 +1048,8 @@ $("queueMail").onclick = () => {
   const messages = selected.map(d => {
     const recipient = d.querySelector(".recipient-mail").value.trim().toLowerCase();
     const source = recipient === d.dataset.recipient.toLowerCase() ? d.dataset.source : "manual";
-    return { company: d.dataset.company, recipient, source, allow_unverified: ["guess", "unknown"].includes(source),
+    return { company: d.dataset.company, recipient, source,
+      recipient_timezone:d.querySelector('.recipient-zone').value.trim(),timezone_source:d.querySelector('.recipient-zone').value.trim()?(d.querySelector('.recipient-zone').value.trim()===d.querySelector('.recipient-zone').dataset.suggested?'company location':'manual'):'fallback', allow_unverified: ["guess", "unknown"].includes(source),
       subject: d.querySelector(".subject-mail").value, body: d.querySelector(".body-mail").value,
       variants: d.dataset.rotation === "1" ? [
         {subject:d.querySelector(".subject-mail").value,body:d.querySelector(".body-mail").value},

@@ -352,3 +352,26 @@ Contact-result imports match against every company in the selected outreach batc
 The shared daily total supports 1,000 attempted messages in a rolling 24-hour window. Each sender retains a separate 500-attempt rolling cap. Two selected accounts can therefore supply up to 1,000 combined attempts, subject to Gmail acceptance and usage outside this app.
 
 Recipient duplication is blocked globally across queue sources and senders. Draft submission removes repeated, already queued/contacted, and blocked addresses after edits; the server rechecks suppression and enforces a database unique index on lowercase, trimmed recipient addresses. Concurrent submissions and restarts cannot add a second row for the same address. Only cancelled drafts with no delivery attempt may be requeued; sent, failed, and uncertain attempts are retained and never retried automatically. Different email addresses belonging to the same person remain separate identities.
+
+## Recipient time zone scheduling
+
+In step 5, **Use recipient time zone scheduling** saves the mode immediately when switched on or off.
+When off, schedule fields are disabled and **Start sending now** follows only the batch interval and daily limits.
+When on, choose a same-day start/end window, optionally restrict to Monday–Friday, set an earliest start in your
+browser’s local time, and choose an IANA fallback zone. Click **Save window changes**, then **Start scheduled sending**.
+**Turn off scheduling · send anytime** also saves the off mode immediately. Changing settings does not start or resume mail delivery. Scheduling
+is off by default, preserving the existing scheduler. The start is inclusive and end exclusive; overnight windows are
+not supported. Windows are calculated with the system IANA database, including DST changes.
+
+Draft review suggests a time zone for recognized company locations. Confirm it because company and person locations
+can differ. Unknown/ambiguous locations use the configured fallback. Saving can also apply suggestions to existing
+queue rows from companies currently loaded in outreach or Explorer; existing explicit zones are preserved. Queue rows
+show **No earlier than** in recipient time and your browser time, with editable time zones and their source. These are
+earliest permitted times; spacing, priority, paused state, remaining queue, provider availability and daily caps can
+delay delivery. Verification-held drafts have no scheduled send time until released.
+
+The worker checks the window before every attempt. Closed zones do not block recipients in open zones, and priority
+applies among recipients currently eligible to send. Verification, suppression, global recipient uniqueness, account
+rotation, batching and rolling daily limits still apply. Windows and per-recipient zones persist across restarts. After
+a shutdown or sleep, it waits for a permitted window instead of sending missed messages in a catch-up burst. The Mac
+must remain awake with the server running.

@@ -12,6 +12,7 @@ import concurrent.futures as cf, html, json, re, socket, ssl, unicodedata, urlli
 from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 from contact_emails import extract_emails, founder_emails
+from public_contacts import discover
 
 UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128 Safari/537.36"
 SLUG_RE = re.compile(r"^[a-z0-9-]{1,100}$")
@@ -131,6 +132,7 @@ def founders(slug):
     for f in c.get("founders", []):
         name = f.get("full_name") or ""
         out.append({"name": name, "title": f.get("title") or "", "linkedin": f.get("linkedin_url") or "",
+                    "github": f.get("github_url") or "", "website": f.get("website") or "",
                     "twitter": f.get("twitter_url") or "",
                     "emails_found": [e for e in founder_emails(name, emails, [person.get("full_name") or "" for person in c.get("founders", [])])],
                     "email_guesses": guesses(name, domain) if dns else []})
@@ -180,6 +182,14 @@ def route(query):
             return 400, {"error": f"Pass 1-{MAX_SLUGS} valid slugs"}, 0
         with cf.ThreadPoolExecutor(len(slugs)) as ex:
             return 200, list(ex.map(founders, slugs)), 86400
+    if action == "public_contacts":
+        slug = (q.get("slug") or [""])[0]
+        if not SLUG_RE.fullmatch(slug):
+            return 400, {"error": "Choose a YC company with a valid profile."}, 0
+        company = founders(slug)
+        if company.get("error"):
+            return 502, company, 0
+        return 200, {"slug": slug, **discover(company["website"], company["domain"], company["founders"])}, 0
     return 400, {"error": "Unknown action"}, 0
 
 

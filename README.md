@@ -1,5 +1,6 @@
 # YC Outreach
 
+
 Pick any Y Combinator batch, get every company's founders and their likely email addresses, and write a personalised
 cold email to each one from a single template. Review up to three contacts per company and automatically send messages
 in shared two-minute batches across connected SMTP mailboxes when running locally. Drafting is free without API keys;
@@ -47,6 +48,26 @@ Previously queued single-template messages retain their saved wording; rotation 
 Different wording can make messages more relevant, but does not guarantee inbox placement or reduce spam classification.
 
 ## Apify address tools
+
+**Find published contacts · free** searches loaded, uncontacted YC companies without an Apify token.
+It reads the homepage and up to seven team/about/contact pages, then up to eight public profiles linked from YC founder
+records or company pages. Supported sources include accessible LinkedIn and X pages, public GitHub user profiles,
+and named people’s linked personal sites. Profiles that require login or hit provider limits may return no address.
+There is no logged-in access, unrestricted web search, or Agent-Reach installation.
+
+Company-published Person records can add founders, engineering leaders and recruiting contacts. Named team-page
+profile links can add team members. GitHub profiles must match the linked person’s full name. Every accepted email
+must belong to the company’s work domain. General inboxes, personal addresses, ambiguous name patterns and explicitly
+unrelated employers are excluded from person attribution. Published-source matching is evidence, not independent
+proof of identity or mailbox deliverability. Existing three-recipient-per-company queue limits still apply.
+
+Only found contacts are listed, with their names, roles, platforms, attribution method and source links. Results are
+saved to the loaded list, including newly discovered named people. **Pause search** keeps progress; **Resume search**
+continues remaining companies after a page refresh. **Verify found mailboxes** checks only published results,
+skips completed/blocked or recently verified addresses, and displays errors, progress and results beside the button.
+Then use **Review found contacts & queue**. Discovery never sends or queues automatically. The queue normalizes and
+uniquely stores each recipient across all senders; it cannot identify one person using different email addresses.
+For lower bounce risk, leave unverified and catch-all sending off.
 
 New lookups skip companies marked sent and recipients already sent, bounced, or with an uncertain/in-progress send.
 The local app reloads sending history immediately before each lookup and stops if that history cannot be read.
@@ -112,7 +133,7 @@ maintenance in the Apify Store and its runs can stall or return no results.
 2. Run `python3 serve.py`, load companies and finish your email template.
 3. Optionally use **Find more company contacts** when founder addresses are missing or invalid. Click **Review loaded companies** to preselect up to three distinct contacts per company. Each gets a separate draft with the correct greeting. Invalid and blocked addresses are excluded; earlier sent and queued contacts count toward the three-contact limit. The compact cards show the recipient and planned sender. Uncheck individual drafts or turn off **include suggested addresses** to exclude guesses.
 4. Click **Queue selected**. Duplicate recipients are skipped across all mailboxes. Unverified drafts are saved as `held`, including older pending messages after upgrading. Click **Verify mailboxes** with your Apify token to release only addresses with acceptable evidence. Editing the recipient requires verification of the new address as well.
-5. Select the ready sender accounts, set the batch interval (default two minutes, adjustable to 60 minutes), then click **Start sending**. Verified/checked-source messages go first, then public/manual sources, then guesses that subsequently passed mailbox verification. Each batch uses one priority tier. The daily total can be up to 500 across selected mailboxes, even with one sender. Up to 1,000 drafts can be queued per request; the queue can span multiple days. Apify's 50-address chunks are processing batches, not a daily verification cap. Provider sending limits still apply.
+5. Select the ready sender accounts, set the batch interval (default two minutes, adjustable to 60 minutes), then click **Start sending**. Verified/checked-source messages go first, then public/manual sources, then guesses that subsequently passed mailbox verification. Each batch uses one priority tier. The daily total can be up to 1,000 across selected mailboxes, even with one sender. Up to 1,000 drafts can be queued per request; the queue can span multiple days. Apify's 50-address chunks are processing batches, not a daily verification cap. Provider sending limits still apply.
 
 Additional Gmail accounts use `SMTP_2_USER` / `SMTP_2_PASSWORD` and `SMTP_3_USER` / `SMTP_3_PASSWORD` in `.env`. Each needs its own Google app password. Additional accounts default to Gmail SMTP; optional `SMTP_2_HOST`, `SMTP_2_PORT`, `SMTP_2_SECURITY`, `SMTP_2_FROM`, and `SMTP_2_FROM_NAME` (and corresponding `SMTP_3_` keys) support other SMTP settings. The UI shows account readiness without exposing passwords. Each selected account sends one different queued message in a shared two-minute batch by default. With three ready accounts, a worker pass sends up to three distinct messages, one through each account, then waits two minutes before the next batch. If an account sent recently, the batch waits until every participating account reaches its interval. The queue records the planned sender before sending and the actual sender after acceptance. Duplicate-recipient protection and blocking apply across all accounts. A sending error pauses the whole queue; another account does not retry that recipient.
 
@@ -264,7 +285,7 @@ Write to people one at a time, keep it short, and take "no" for an answer.
 
 MIT
 
-Unverified sending is an explicit opt-in in step 5. It releases guesses and inconclusive or unchecked addresses after verified mailboxes and catch-all recipients. Known invalid, risky, disposable, bounced and blocked addresses remain excluded. This can increase bounces. The daily total supports up to 500 across selected senders.
+Unverified sending is an explicit opt-in in step 5. It releases guesses and inconclusive or unchecked addresses after verified mailboxes and catch-all recipients. Known invalid, risky, disposable, bounced and blocked addresses remain excluded. This can increase bounces. The daily total supports up to 1,000 across selected senders.
 
 ## Import your own contact list
 
@@ -272,7 +293,7 @@ Use the **Import contacts** tab at the top to upload CSV, TSV, or a JSON array o
 
 Map the required email column and optional company, contact name, website, title and description columns. Preview shows the first ten contacts plus counts of valid addresses, duplicates and invalid rows. Email format checks are not mailbox verification. If a company is missing, the email domain becomes the company; missing names use the email local part.
 
-Click **Load imported contacts**, use the existing A/B templates, optionally verify mailboxes, then **Review loaded companies** and queue selected drafts. Importing never queues or sends automatically. The existing duplicate, suppression, company contact cap, sending priority and 500/day total still apply. Up to three contacts per company can be reviewed and queued. Contacts are labeled unverified unless existing mailbox evidence applies.
+Click **Load imported contacts**, use the existing A/B templates, optionally verify mailboxes, then **Review loaded companies** and queue selected drafts. Importing never queues or sends automatically. The existing duplicate, suppression, company contact cap, sending priority and 1,000/day total (500 per sending account) still apply. Up to three contacts per company can be reviewed and queued. Contacts are labeled unverified unless existing mailbox evidence applies.
 
 Switching source tabs preserves separate YC and imported lists in browser storage. Uploading a new list replaces only the imported list; saved queue/history is preserved. Files are parsed locally in the browser; queued drafts are stored by the local Python service.
 
@@ -317,3 +338,17 @@ Explorer has a dedicated **Outreach** column and stage filter. **Not contacted o
 YC outreach batch loading now combines the current YC directory with the saved scraper catalog, deduplicated by slug. Saved records without a known batch appear under **Saved scraper companies · batch unknown**. Loading a batch always fetches its latest list while retaining existing browser contact edits; stale snapshot founder profiles are refreshed before use. Finishing an Explorer directory refresh also updates the outreach batch dropdown.
 
 For free-plan Leads Finder accounts that refuse API runs, open **Free Apify plan? Find contacts through Apify’s UI** in step 4. Download prepared search input, paste it into the actor’s JSON input in Apify Console, run there, export Output as JSON (up to 100 rows), and import it through this panel. It merges matching named contacts into the loaded companies, excludes already contacted/blocked recipients and duplicates, and retains the three-contact cap. Imports are unverified drafts and never enqueue or send automatically. The actor’s normal credit charges apply to the Console run.
+
+
+
+1. Open **Free Apify plan?**
+2. Click **Download search input**.
+3. Open Leads Finder in Apify, paste that JSON into its input and run there.
+4. Export its output as **JSON** and import it into our app.
+5. Verify the imported mailboxes, then review and queue.
+![alt text](image.png)
+Contact-result imports match against every company in the selected outreach batch, including companies whose founder profiles have not loaded. Domains are normalized across domain/website fields and inferred from the work email when provider company fields are null. Imported contacts are shown in outreach as unverified drafts. A per-row report explains additions, duplicates, contacted/blocked recipients, company mismatches, domain mismatches, and contact-cap exclusions; no unmatched company is silently added. UTF-8 BOM JSON exports are accepted.
+
+The shared daily total supports 1,000 attempted messages in a rolling 24-hour window. Each sender retains a separate 500-attempt rolling cap. Two selected accounts can therefore supply up to 1,000 combined attempts, subject to Gmail acceptance and usage outside this app.
+
+Recipient duplication is blocked globally across queue sources and senders. Draft submission removes repeated, already queued/contacted, and blocked addresses after edits; the server rechecks suppression and enforces a database unique index on lowercase, trimmed recipient addresses. Concurrent submissions and restarts cannot add a second row for the same address. Only cancelled drafts with no delivery attempt may be requeued; sent, failed, and uncertain attempts are retained and never retried automatically. Different email addresses belonging to the same person remain separate identities.
